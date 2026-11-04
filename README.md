@@ -6,9 +6,9 @@ A single-user, mobile-first creator workspace built with Next.js App Router, str
 
 Requires Node 22.22+ and npm. Run `npm ci`, copy `.env.example` to `.env.local`, set `APP_PASSWORD` to at least 16 characters and `SESSION_SECRET` to a random secret of at least 32 characters, then run `npm run dev`. Open http://127.0.0.1:3000. Both private API access and mutations require the session cookie. No private content is rendered into the signed-out HTML shell.
 
-For this initial workspace, an ignored `.env.local` has already been generated for local review. Its temporary workspace password is `content-studio-local-2026`. Change this before deploying or exposing the server. Its session signing secret was randomly generated and is not checked into source control.
+For local demo review, unset GOOGLE_AUTH_MODE after copying the example. Set your own local password and session secret. Production OAuth mode fails closed when its credentials or storage are unavailable.
 
-Without Google credentials, the clearly labeled demo workspace persists edits in the ignored `.demo-data.json` file. The sample content is fictional and never copied into Google Sheets. Demo persistence requires a writable disk and a single server process. Real Google data is never silently substituted with sample data after an integration failure.
+When GOOGLE_AUTH_MODE is unset, the clearly labeled demo workspace persists edits in the ignored `.demo-data.json` file. The sample content is fictional and never copied into Google Sheets. Demo persistence requires a writable disk and a single server process. Real Google data is never silently substituted with sample data after an integration failure.
 
 ## Google Sheets connection
 

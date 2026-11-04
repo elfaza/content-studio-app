@@ -36,3 +36,7 @@ The user must still complete a Google consent round trip in the deployed app to 
 Settings provides Connect/Reconnect Google. On success, select **Continue to app**; no copy/paste or redeployment is needed. Google OAuth apps in Testing require renewed authorization after seven days.
 
 Pending attempt and claim objects are retained. Optional operator cleanup may remove attempts/claims older than 24 hours, after their validity period, but must never remove active claims or credentials as a retry mechanism. There is no automatic destructive cleanup.
+
+## Deployment verification
+
+Production deployment dpl_xY6Uzd5wctQupRTfEgPNGTj4fNZr is READY from implementation commit 5dbf847f615760b680fba4b1a028e1cbe8649929. Anonymous live session inspection returned configured=true and authorized=false. An invalid live OAuth callback returned HTTP 400 with a sanitized, token-free response. A live authenticated initiation/Google consent round trip has not been performed; the sensitive app password is not retrievable through the environment API, and no password was requested in chat. Complete Connect/Reconnect Google in Settings to verify the real provider exchange and subsequent live Sheets access.
