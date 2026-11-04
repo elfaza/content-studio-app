@@ -1,0 +1,9 @@
+node_modules
+.next
+.env*
+.demo-data.json*
+*.log
+test-results
+playwright-report
+.codex
+.agents

@@ -1,0 +1,15 @@
+node_modules/
+.next/
+.env*
+!.env.example
+playwright-report/
+test-results/
+*.tsbuildinfo
+.demo-data.json
+*.log
+
+artifacts/
+.codex/
+.agents/
+.aws/
+.demo-data.json.tmp
