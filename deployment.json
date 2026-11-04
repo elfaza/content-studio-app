@@ -2,9 +2,9 @@
   "provider": "vercel",
   "projectId": "prj_oag1EA0yrpc66mJC55AG4iyvo9l7",
   "teamId": "team_hSmf5K3G7vMTH3seqMHKaM56",
-  "deploymentId": "dpl_FedqZSGS965iGVEE5VqpDvGpDSxz",
+  "deploymentId": "dpl_B25QW3pfzdM3yQtY97HMj3aJ3y1d",
   "url": "https://content-studio-xi-peach.vercel.app",
-  "sourceCommit": "f002b16165b6e5e1e9283600b15f5a3794000f5a",
+  "sourceCommit": "788bbe40272220e25bcd20ededb244b553ba9b69",
   "googleAuthMode": "oauth",
   "credentialStorage": "private encrypted Vercel Blob",
   "blobStoreId": "store_OJffxg5O3i8lNsqi",
@@ -13,8 +13,8 @@
   "legacyFallbackOnConfirmedAbsenceOnly": true,
   "googleConsentRoundTripPending": true,
   "verified": {
-    "unitIntegrationTests": 55,
-    "browserTests": 11,
+    "unitIntegrationTests": 60,
+    "browserTests": 12,
     "privateBlobAtomicWrites": true,
     "privateBlobConsistentReads": true,
     "productionBuild": true,
@@ -22,8 +22,14 @@
     "cancellationAndRestoreDemo": true,
     "atomicCancellationMock": true,
     "productionPrivateApiProtected": true,
-    "productionErrorLogScan": "No error or fatal records returned for this deployment immediately after release"
+    "productionErrorLogScan": "No error or fatal records returned for this deployment immediately after release",
+    "platformCardAndAnalyticsDemo": true,
+    "platformDurationPersistence": true,
+    "originalDurationFormulaPreservedMock": true,
+    "platformCardMobileVisualReview": true,
+    "platformVerificationScope": "Demo browser and local persistence plus mocked Google API; no real spreadsheet writes"
   },
   "spreadsheetWritesDuringVerification": 0,
-  "cancelIdeasWithReasons": true
+  "cancelIdeasWithReasons": true,
+  "platformSpecificDurationAndAnalytics": true
 }
