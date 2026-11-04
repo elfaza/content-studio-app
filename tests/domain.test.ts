@@ -19,6 +19,23 @@ const row = (v: Record<string, string>): RecordData => ({
   version: "v1",
   ...v,
 });
+it("requires a trimmed reason for cancelled ideas and normalizes cancellation spelling", () => {
+  expect(() =>
+    validate("ideas", {
+      title: "Stopped",
+      status: "Cancelled",
+      cancellationReason: "   ",
+    }),
+  ).toThrow("cancellation reason");
+  expect(
+    validate("ideas", {
+      title: "Stopped",
+      status: "Cancelled",
+      cancellationReason: "  Topic no longer relevant  ",
+    }).cancellationReason,
+  ).toBe("Topic no longer relevant");
+  expect(stage("canceled")).toBe("Cancelled");
+});
 describe("Missing metrics and calculations", () => {
   it("distinguishes missing from measured zero", () => {
     expect(number("")).toBeNull();

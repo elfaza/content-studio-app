@@ -7,6 +7,7 @@ export const stages = [
   "Ready",
   "Scheduled",
   "Published",
+  "Cancelled",
 ] as const;
 export const platforms = ["Instagram", "TikTok", "YouTube"] as const;
 export type Platform = (typeof platforms)[number];
@@ -123,32 +124,39 @@ const identity = {
   id: z.string().max(100).optional(),
   version: z.string().max(100).optional(),
 };
-export const ideaSchema = z.object({
-  ...identity,
-  title: z.string().trim().min(1).max(250),
-  date: optionalDate,
-  category: text,
-  priority: text,
-  status: text,
-  platform: text,
-  difficulty: text,
-  duration: numeric,
-  needFootage: text,
-  relevance: text,
-  reference: text,
-  footageReference: text,
-  visualNotes: text,
-  trend: text,
-  hook: text,
-  script: text,
-  shots: text,
-  overlay: text,
-  cta: text,
-  notes: text,
-  archived: z.enum(["true", "false"]).default("false"),
-  deadline: optionalDate,
-  footageRecorded: text,
-});
+export const ideaSchema = z
+  .object({
+    ...identity,
+    title: z.string().trim().min(1).max(250),
+    date: optionalDate,
+    category: text,
+    priority: text,
+    status: text,
+    platform: text,
+    difficulty: text,
+    duration: numeric,
+    needFootage: text,
+    relevance: text,
+    reference: text,
+    footageReference: text,
+    visualNotes: text,
+    trend: text,
+    hook: text,
+    script: text,
+    shots: text,
+    overlay: text,
+    cta: text,
+    notes: text,
+    archived: z.enum(["true", "false"]).default("false"),
+    deadline: optionalDate,
+    footageRecorded: text,
+    cancellationReason: z.string().trim().max(2000).default(""),
+  })
+  .refine(
+    (data) =>
+      stage(data.status) !== "Cancelled" || data.cancellationReason.length > 0,
+    { path: ["cancellationReason"], message: "Enter a cancellation reason." },
+  );
 export const videoSchema = z
   .object({
     ...identity,
@@ -242,6 +250,7 @@ export function validate(
 export function stage(status: string) {
   const s = status.toLowerCase().trim();
   if (["posted", "published", "done"].includes(s)) return "Published";
+  if (s === "canceled" || s === "cancelled") return "Cancelled";
   if (s === "ideas" || s === "new") return "Idea";
   return stages.find((x) => x.toLowerCase() === s) ?? "Idea";
 }
@@ -309,4 +318,20 @@ export function validateHeaders(
     throw new Error("Missing required columns: " + missing.join(", "));
   if (new Set(headers.filter(Boolean)).size !== headers.filter(Boolean).length)
     throw new Error("Duplicate column headers");
+}
+
+export function cancelIdeaSchedules(
+  rows: RecordData[],
+  ideaId: string,
+  version: string,
+) {
+  return rows.map((row) =>
+    row.contentId === ideaId && row.status === "Scheduled"
+      ? {
+          ...row,
+          status: "Cancelled",
+          version: "cancelled-" + version.slice(0, 64),
+        }
+      : row,
+  );
 }

@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Check, Copy, LoaderCircle } from "lucide-react";
@@ -13,6 +13,7 @@ import {
   metricKeys,
   today,
   validate,
+  stage,
 } from "@/lib/domain";
 import { CategoryField } from "./category-field";
 const base = z.object({ title: z.string().optional() }).catchall(z.string());
@@ -57,7 +58,11 @@ export default function Editor({
   };
   const { register, handleSubmit, getValues, setValue, control } = useForm<
     Record<string, string>
-  >({ defaultValues: defaults, resolver: zodResolver(base) });
+  >({
+    defaultValues: defaults,
+    resolver: zodResolver(base),
+  });
+  const currentStage = stage(useWatch({ control, name: "status" }) || "Idea");
   const [error, setError] = useState(""),
     [saving, setSaving] = useState(false),
     [copied, setCopied] = useState("");
@@ -120,6 +125,7 @@ export default function Editor({
             ))}
           </select>
         ) : [
+            "cancellationReason",
             "script",
             "shots",
             "hook",
@@ -131,7 +137,15 @@ export default function Editor({
           ].includes(key) ? (
           <>
             <textarea
-              rows={key === "script" || key === "shots" ? 5 : 2}
+              rows={
+                key === "script" || key === "shots"
+                  ? 5
+                  : key === "cancellationReason"
+                    ? 3
+                    : 2
+              }
+              required={key === "cancellationReason"}
+              maxLength={key === "cancellationReason" ? 2000 : undefined}
               {...register(key)}
             />
             {["script", "shots", "hook"].includes(key) && (
@@ -359,6 +373,35 @@ export default function Editor({
                 ? [record.status]
                 : []),
             ])}
+            {currentStage === "Cancelled" ? (
+              <>
+                {field("cancellationReason", "Cancellation reason")}
+                <p className="form-note full">
+                  Saving cancels pending schedules too. Restoring this idea will
+                  not restart old schedules.
+                </p>
+              </>
+            ) : (
+              <>
+                {record?.id && (
+                  <button
+                    type="button"
+                    className="text-link"
+                    onClick={() =>
+                      setValue("status", "Cancelled", { shouldDirty: true })
+                    }
+                  >
+                    Cancel idea
+                  </button>
+                )}
+                {record?.cancelledAt && (
+                  <p className="cancellation-note full">
+                    <strong>Previous cancellation:</strong>{" "}
+                    {record.cancellationReason}
+                  </p>
+                )}
+              </>
+            )}
             {field("platform", "Target platform", ["All", ...platforms])}
             {field("difficulty", "Difficulty", ["Easy", "Medium", "Hard"])}
             {field("date", "Discovered on", undefined, "date")}

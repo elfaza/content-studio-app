@@ -15,11 +15,76 @@ afterAll(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 describe("Repository mutations and conflicts", () => {
+  it("cancels ideas with a reason and pending schedules, then restores without restarting plans", async () => {
+    const idea = await save("ideas", {
+      title: "Cancellation test",
+      status: "Filming",
+      notes: "Keep notes",
+    });
+    const plan = await save("schedule", {
+      contentId: idea.id,
+      title: idea.title,
+      date: "2026-11-10",
+      time: "19:00",
+      platform: "Instagram",
+    });
+    const d = await readDataset();
+    const originalVideos = JSON.stringify(d.videos),
+      originalSnapshots = JSON.stringify(d.snapshots);
+    await expect(
+      save("ideas", { ...idea, status: "Cancelled", cancellationReason: " " }),
+    ).rejects.toThrow("cancellation reason");
+    const cancelled = await save("ideas", {
+      ...idea,
+      status: "Cancelled",
+      cancellationReason: "No longer fits my content",
+    });
+    expect(cancelled).toMatchObject({
+      notes: "Keep notes",
+      cancelledFrom: "Filming",
+      cancellationReason: "No longer fits my content",
+    });
+    expect(cancelled.cancelledAt).toBeTruthy();
+    expect(
+      (await readDataset()).schedule.find((s) => s.id === plan.id)?.status,
+    ).toBe("Cancelled");
+    await expect(
+      save("schedule", {
+        contentId: idea.id,
+        title: idea.title,
+        date: "2026-11-11",
+        time: "19:00",
+        platform: "TikTok",
+      }),
+    ).rejects.toThrow("Restore this cancelled idea");
+    const restored = await save("ideas", {
+      ...cancelled,
+      status: cancelled.cancelledFrom,
+    });
+    const after = await readDataset();
+    expect(restored).toMatchObject({
+      status: "Filming",
+      cancellationReason: "No longer fits my content",
+      notes: "Keep notes",
+    });
+    expect(after.schedule.find((s) => s.id === plan.id)?.status).toBe(
+      "Cancelled",
+    );
+    expect(JSON.stringify(after.videos)).toBe(originalVideos);
+    expect(JSON.stringify(after.snapshots)).toBe(originalSnapshots);
+    await expect(
+      save("ideas", {
+        ...idea,
+        status: "Cancelled",
+        cancellationReason: "Stale cancel",
+      }),
+    ).rejects.toThrow("changed since");
+  });
   it("fails closed in direct OAuth mode without credential configuration", async () => {
     vi.stubEnv("GOOGLE_AUTH_MODE", "oauth");
     vi.stubEnv("BLOB_READ_WRITE_TOKEN", "");
     try {
-      await expect(readDataset()).rejects.toMatchObject({status:503});
+      await expect(readDataset()).rejects.toMatchObject({ status: 503 });
     } finally {
       vi.stubEnv("GOOGLE_AUTH_MODE", "");
     }

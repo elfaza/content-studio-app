@@ -14,6 +14,7 @@ import {
   validateHeaders,
   validate,
   stage,
+  cancelIdeaSchedules,
 } from "./domain";
 import { demoData } from "./demo";
 import { z } from "zod";
@@ -371,6 +372,17 @@ export async function save(
       throw new AppError("Choose an existing content item.");
     if (
       entity === "schedule" &&
+      data.status === "Scheduled" &&
+      dataset.ideas.some(
+        (i) => i.id === data.contentId && stage(i.status) === "Cancelled",
+      )
+    )
+      throw new AppError(
+        "Restore this cancelled idea before scheduling it.",
+        409,
+      );
+    if (
+      entity === "schedule" &&
       dataset.schedule.some(
         (s) =>
           s.id !== data.id &&
@@ -405,6 +417,26 @@ export async function save(
       id,
       version: hash(data),
     } as RecordData;
+    const cancelling =
+      entity === "ideas" && stage(record.status) === "Cancelled";
+    if (cancelling && (!existing || stage(existing.status) !== "Cancelled")) {
+      record.cancelledAt = new Date().toISOString();
+      record.cancelledFrom = existing?.status || "Idea";
+    }
+    if (
+      entity === "ideas" &&
+      existing &&
+      stage(existing.status) === "Cancelled" &&
+      !cancelling
+    ) {
+      record.restoredAt = new Date().toISOString();
+      record.cancellationReason = existing.cancellationReason || "";
+    }
+    const cancelledSchedules = cancelling
+      ? dataset.schedule.filter(
+          (s) => s.contentId === id && s.status === "Scheduled",
+        )
+      : [];
     if (entity === "videos") {
       for (const key of ["igUrl", "tiktokUrl", "youtubeUrl"]) {
         if (!record[key]) continue;
@@ -434,6 +466,12 @@ export async function save(
         409,
       );
     if (!inspection) {
+      if (cancelling)
+        dataset.schedule = cancelIdeaSchedules(
+          dataset.schedule,
+          id,
+          record.version,
+        );
       if (hostedDemo()) return record;
       dataset[entity] = existing
         ? dataset[entity].map((r) => (r.id === id ? record : r))
@@ -614,6 +652,37 @@ export async function save(
           fields: "userEnteredValue",
         },
       });
+    for (const schedule of cancelledSchedules) {
+      const planGrid = inspection.grids.schedule;
+      const row = inspection.indices.get("schedule" + schedule.id);
+      const column = planGrid?.headers.indexOf("status") ?? -1;
+      if (!planGrid || row === undefined || column < 0)
+        throw new AppError(
+          "A linked schedule changed. Refresh before cancelling.",
+          409,
+        );
+      const original = inspection.raw.get("schedule" + schedule.id)?.[column];
+      if (String(original ?? "").startsWith("="))
+        throw new AppError(
+          "A linked schedule status contains a formula. Review it in Google Sheets before cancelling.",
+          409,
+        );
+      requests.push({
+        updateCells: {
+          range: {
+            sheetId: planGrid.sheetId,
+            startRowIndex: row,
+            endRowIndex: row + 1,
+            startColumnIndex: column,
+            endColumnIndex: column + 1,
+          },
+          rows: [
+            { values: [{ userEnteredValue: { stringValue: "Cancelled" } }] },
+          ],
+          fields: "userEnteredValue",
+        },
+      });
+    }
     // Deliberately do not retry writes: a timeout can mean the atomic batch committed.
     if (!commit) throw new AppError("Save coordination is unavailable", 503);
     await commit(requests);

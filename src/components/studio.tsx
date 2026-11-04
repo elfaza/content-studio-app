@@ -50,10 +50,12 @@ import {
   stage,
   stages,
   sum,
+  cancelIdeaSchedules,
   today,
 } from "@/lib/domain";
 import { Dialog } from "./ui/dialog";
 import Editor from "./editor";
+import { CancelIdeaDialog } from "./cancel-idea-dialog";
 import { CategoryChart, ViewsChart } from "./charts";
 const pages = [
   { slug: "dashboard", name: "Overview", icon: Home },
@@ -144,6 +146,7 @@ export default function Studio() {
   const [offlineData, setOfflineData] = useState<Dataset | null>(null),
     [online, setOnline] = useState(true),
     [editing, setEditing] = useState<Editing | null>(null),
+    [cancelling, setCancelling] = useState<RecordData | null>(null),
     [notice, setNotice] = useState(""),
     [menu, setMenu] = useState(false),
     [collapsed, setCollapsed] = useState(false),
@@ -267,6 +270,9 @@ export default function Studio() {
         [entity]: current[entity].some((r) => r.id === body.id)
           ? current[entity].map((r) => (r.id === body.id ? body : r))
           : [...current[entity], body],
+        ...(entity === "ideas" && stage(body.status) === "Cancelled"
+          ? { schedule: cancelIdeaSchedules(current.schedule, body.id, body.version) }
+          : {}),
         syncedAt: new Date().toISOString(),
       };
       localStorage.setItem("cs-hosted-demo", JSON.stringify(next));
@@ -284,6 +290,10 @@ export default function Studio() {
     record: RecordData,
     changes: Record<string, string>,
   ) => {
+    if (entity === "ideas" && changes.status === "Cancelled") {
+      setCancelling(record);
+      return;
+    }
     if (
       entity === "ideas" &&
       changes.status === "Published" &&
@@ -902,7 +912,7 @@ export default function Studio() {
                           dataset.ideas.filter(
                             (i) =>
                               i.archived !== "true" &&
-                              !["Published", "Scheduled"].includes(
+                              !["Published", "Scheduled", "Cancelled"].includes(
                                 stage(i.status),
                               ),
                           ).length,
@@ -1084,8 +1094,7 @@ export default function Studio() {
                     {toolbar}
                     <div className="section-top">
                       <p className="muted small">
-                        {ideas.length}{" "}
-                        {archived ? "archived ideas" : "ideas to explore"}
+                        {ideas.length} {archived ? "archived ideas" : "ideas"}
                       </p>
                       <span className="small muted">
                         Your next story could be right here.
@@ -1140,6 +1149,13 @@ export default function Studio() {
                                   {i.difficulty || "Unspecified"}
                                 </span>
                               </div>
+                              {stage(i.status) === "Cancelled" && (
+                                <p className="cancellation-note">
+                                  <strong>Cancelled:</strong>{" "}
+                                  {i.cancellationReason ||
+                                    "Reason not recorded"}
+                                </p>
+                              )}
                               <div className="idea-card-foot">
                                 <span>
                                   {i.platform || "No platform"} ·{" "}
@@ -1155,12 +1171,32 @@ export default function Studio() {
                             <button
                               className="text-link"
                               disabled={!canWrite}
+                              onClick={() =>
+                                stage(i.status) === "Cancelled"
+                                  ? void quickSave("ideas", i, {
+                                      status:
+                                        stage(i.cancelledFrom || "Idea") ===
+                                        "Cancelled"
+                                          ? "Idea"
+                                          : stage(i.cancelledFrom || "Idea"),
+                                    })
+                                  : setCancelling(i)
+                              }
+                            >
+                              {stage(i.status) === "Cancelled"
+                                ? "Restore idea"
+                                : "Cancel idea"}
+                            </button>
+                            <button
+                              className="text-link"
+                              disabled={!canWrite}
                               onClick={() => {
                                 const copy = {
                                   ...i,
                                   title: i.title + " (copy)",
                                   status: "Idea",
                                   date: today(),
+                                  cancellationReason: "",
                                 };
                                 delete (copy as Partial<RecordData>).id;
                                 delete (copy as Partial<RecordData>).version;
@@ -1262,6 +1298,12 @@ export default function Studio() {
                                       : "✓ Footage ready"}
                                   </span>
                                 </div>
+                                {stage(i.status) === "Cancelled" && (
+                                  <p className="cancellation-note">
+                                    <strong>Reason:</strong>{" "}
+                                    {i.cancellationReason || "Not recorded"}
+                                  </p>
+                                )}
                                 {i.deadline && (
                                   <p className="small muted">
                                     Due {dateLabel(i.deadline)}
@@ -1290,13 +1332,15 @@ export default function Studio() {
                                 )}
                               </article>
                             ))}
-                          <button
-                            className="kanban-add"
-                            disabled={!canWrite}
-                            onClick={() => openIdea({ status: s })}
-                          >
-                            <Plus size={14} /> Add idea
-                          </button>
+                          {s !== "Cancelled" && (
+                            <button
+                              className="kanban-add"
+                              disabled={!canWrite}
+                              onClick={() => openIdea({ status: s })}
+                            >
+                              <Plus size={14} /> Add idea
+                            </button>
+                          )}
                         </section>
                       ))}
                     </div>
@@ -2204,6 +2248,20 @@ export default function Studio() {
             </Link>
           ))}
         </div>
+      )}
+      {cancelling && (
+        <CancelIdeaDialog
+          title={cancelling.title}
+          onClose={() => setCancelling(null)}
+          onConfirm={async (reason) => {
+            await save("ideas", {
+              ...cancelling,
+              status: "Cancelled",
+              cancellationReason: reason,
+            });
+            setCancelling(null);
+          }}
+        />
       )}
       <Dialog
         open={!!editing}

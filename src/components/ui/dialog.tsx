@@ -6,11 +6,13 @@ export function Dialog({
   onOpenChange,
   title,
   children,
+  description = "Keep the details that matter. You can always come back to refine them.",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
   children: React.ReactNode;
+  description?: string;
 }) {
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
@@ -40,8 +42,7 @@ export function Dialog({
             </DialogPrimitive.Close>
           </div>
           <DialogPrimitive.Description className="muted small">
-            Keep the details that matter. You can always come back to refine
-            them.
+            {description}
           </DialogPrimitive.Description>
           {children}
         </DialogPrimitive.Content>

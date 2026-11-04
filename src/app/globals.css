@@ -3069,3 +3069,31 @@ select:not([multiple]):not([size]) {
   max-width: 760px;
   line-height: 1.7;
 }
+
+.badge.cancelled {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--panel));
+}
+.status-dot.cancelled {
+  background: var(--danger);
+}
+.cancellation-note {
+  font-size: 14px;
+  line-height: 1.6;
+  margin-top: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.cancel-idea-title {
+  margin: 22px 0 18px;
+  font-weight: 600;
+}
+.button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--panel);
+}
+.card-actions {
+  flex-wrap: wrap;
+  gap: 10px;
+}

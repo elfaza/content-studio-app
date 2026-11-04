@@ -101,6 +101,10 @@ npm run test:e2e
 
 Unit/integration tests use isolated temporary demo files and mock Google APIs; they require no Google credentials. Playwright runs against the local server, using the installed Microsoft Edge browser (`channel: msedge`). Set `E2E_PASSWORD` if you changed the workspace password. Install Edge or change the Playwright channel for another environment. End-to-end tests create demo records; run them against demo mode only. Tests refuse to mutate a live workspace.
 
+## Cancel an idea
+
+Use **Cancel idea** in the Idea library, pipeline stage menu, or idea editor. A reason is required. Cancellation keeps the idea and its notes, records the reason, excludes it from active production, and cancels its pending schedules in the same coordinated save. **Restore idea** returns it to its previous stage without restarting old schedules. Original sheet columns are unchanged; cancellation details live in the existing metadata sidecar.
+
 ## Phase boundaries and known limitations
 
 Phase 1 supplies the core daily workflow. Phase 2 covers the deterministic weekly recommendation engine, advanced retention/category comparisons, publishing consistency reports, and statistically supported time-slot recommendations. No invented trend scoring or recommendation placeholders run in Phase 1. Social API integrations and import/export reports remain Phase 3.

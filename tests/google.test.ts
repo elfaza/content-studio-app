@@ -127,6 +127,104 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 describe("Official Google adapter preservation", () => {
+  it("cancels the idea and linked schedules in one atomic batch with reason in sidecar metadata", async () => {
+    const idea = (await readDataset()).ideas[0];
+    tabs["CS_Schedule"] = {
+      id: 4,
+      headers: [
+        "id",
+        "contentId",
+        "title",
+        "date",
+        "time",
+        "platform",
+        "status",
+        "notes",
+      ],
+      rows: [
+        [
+          "plan",
+          idea.id,
+          idea.title,
+          "2026-11-10",
+          "19:00",
+          "Instagram",
+          "Scheduled",
+          "Keep schedule notes",
+        ],
+      ],
+    };
+    await save("ideas", {
+      ...idea,
+      status: "Cancelled",
+      cancellationReason: "Topic no longer relevant",
+    });
+    const requests = contentRequests();
+    const originalUpdates = requests.filter(
+      (r: { updateCells?: { range: { sheetId: number } } }) =>
+        r.updateCells?.range.sheetId === 1,
+    );
+    expect(originalUpdates).toHaveLength(1);
+    expect(originalUpdates[0].updateCells.range.startColumnIndex).toBe(17);
+    const planUpdates = requests.filter(
+      (r: { updateCells?: { range: { sheetId: number } } }) =>
+        r.updateCells?.range.sheetId === 4,
+    );
+    expect(planUpdates).toHaveLength(1);
+    expect(planUpdates[0].updateCells.range.startColumnIndex).toBe(6);
+    expect(
+      planUpdates[0].updateCells.rows[0].values[0].userEnteredValue.stringValue,
+    ).toBe("Cancelled");
+    expect(JSON.stringify(requests)).toContain("Topic no longer relevant");
+    expect(requests.at(-1)).toHaveProperty("deleteSheet");
+    expect(mock.batchUpdate).toHaveBeenCalledTimes(2);
+  });
+  it("does not commit cancellation if a linked schedule status is a formula", async () => {
+    const idea = (await readDataset()).ideas[0];
+    tabs["CS_Schedule"] = {
+      id: 4,
+      headers: [
+        "id",
+        "contentId",
+        "title",
+        "date",
+        "time",
+        "platform",
+        "status",
+        "notes",
+      ],
+      rows: [
+        [
+          "plan",
+          idea.id,
+          idea.title,
+          "2026-11-10",
+          "19:00",
+          "Instagram",
+          '="Scheduled"',
+          "Keep notes",
+        ],
+      ],
+    };
+    const normal = mock.valuesGet.getMockImplementation()!;
+    mock.valuesGet.mockImplementation(async (args) => {
+      const result = await normal(args);
+      if (args.valueRenderOption === "UNFORMATTED_VALUE")
+        result.data.values = result.data.values.map((r: unknown[]) =>
+          r.map((v) => (v === '="Scheduled"' ? "Scheduled" : v)),
+        );
+      return result;
+    });
+    await expect(
+      save("ideas", {
+        ...idea,
+        status: "Cancelled",
+        cancellationReason: "Stop",
+      }),
+    ).rejects.toThrow("formula");
+    expect(contentRequests()).toEqual([]);
+  });
+
   it("retains registered idea IDs across row movement and external status changes", async () => {
     const anchor = createHash("sha256")
       .update(JSON.stringify(["2026-10-01", "Existing story"]))
