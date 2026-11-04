@@ -127,6 +127,25 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 describe("Official Google adapter preservation", () => {
+  it("stores platform durations in metadata without rewriting the original duration, formulas, or snapshots", async () => {
+    const column = Object.values(videoFields).indexOf("duration");
+    tabs["Published Content"].rows[0][column] = "=400+77";
+    const video = (await readDataset()).videos[0];
+    expect(video.duration).toBe("477");
+    await save("videos", { ...video, igDuration: "45", tiktokDuration: "70" });
+    const requests = contentRequests();
+    expect(
+      requests.filter((r: { updateCells?: { range: { sheetId: number } } }) =>
+        [2, 3].includes(r.updateCells?.range.sheetId ?? -1),
+      ),
+    ).toHaveLength(0);
+    const serialized = JSON.stringify(requests);
+    expect(serialized).toContain("igDuration");
+    expect(serialized).toContain("tiktokDuration");
+    expect(serialized).toContain("45");
+    expect(tabs["Published Content"].rows[0][column]).toBe("=400+77");
+    expect(mock.batchUpdate).toHaveBeenCalledTimes(2);
+  });
   it("cancels the idea and linked schedules in one atomic batch with reason in sidecar metadata", async () => {
     const idea = (await readDataset()).ideas[0];
     tabs["CS_Schedule"] = {

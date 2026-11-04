@@ -44,15 +44,18 @@ import {
   RecordData,
   dayAdd,
   engagement,
-  latest,
   number,
   platforms,
+  platformPrefix,
+  type Platform,
   stage,
   stages,
   sum,
   cancelIdeaSchedules,
   today,
 } from "@/lib/domain";
+import { platformPerformance, averageWatchedPercent } from "@/lib/performance";
+import { PublishedPlatforms, ObservationHistory } from "./published-platforms";
 import { Dialog } from "./ui/dialog";
 import Editor from "./editor";
 import { CancelIdeaDialog } from "./cancel-idea-dialog";
@@ -153,6 +156,7 @@ export default function Studio() {
     [query, setQuery] = useState(""),
     [category, setCategory] = useState("All categories"),
     [platform, setPlatform] = useState("All platforms"),
+    [analyticsPlatform, setAnalyticsPlatform] = useState<Platform>("Instagram"),
     [statusFilter, setStatusFilter] = useState("All stages"),
     [sort, setSort] = useState("recent"),
     [archived, setArchived] = useState(false),
@@ -188,6 +192,9 @@ export default function Studio() {
     async function init() {
       try {
         const s = await fetcher("/api/session");
+        const preferredPlatform = localStorage.getItem("cs-analytics-platform");
+        if (platforms.includes(preferredPlatform as Platform))
+          setAnalyticsPlatform(preferredPlatform as Platform);
         const savedTheme = localStorage.getItem("cs-ui-theme");
         if (savedTheme) setLight(savedTheme === "light");
         setConfigured(s.configured);
@@ -271,7 +278,13 @@ export default function Studio() {
           ? current[entity].map((r) => (r.id === body.id ? body : r))
           : [...current[entity], body],
         ...(entity === "ideas" && stage(body.status) === "Cancelled"
-          ? { schedule: cancelIdeaSchedules(current.schedule, body.id, body.version) }
+          ? {
+              schedule: cancelIdeaSchedules(
+                current.schedule,
+                body.id,
+                body.version,
+              ),
+            }
           : {}),
         syncedAt: new Date().toISOString(),
       };
@@ -341,14 +354,15 @@ export default function Studio() {
   const filteredVideos = (dataset?.videos ?? []).filter(matches);
   const start = days === "custom" ? from : dayAdd(today(), -Number(days) + 1),
     end = days === "custom" ? to : today();
-  const observed = useMemo(
+  const { observed, points } = useMemo(
     () =>
-      latest(
-        (dataset?.snapshots ?? []).filter(
-          (s) => (!start || s.date >= start) && s.date <= end,
-        ),
+      platformPerformance(
+        dataset?.snapshots ?? [],
+        analyticsPlatform,
+        start,
+        end,
       ),
-    [dataset?.snapshots, start, end],
+    [dataset?.snapshots, analyticsPlatform, start, end],
   );
   const viewTotal = sum(observed.map((s) => number(s.views))),
     engagementRates = observed
@@ -357,19 +371,6 @@ export default function Studio() {
     avgRate = engagementRates.length
       ? engagementRates.reduce((a, b) => a + b, 0) / engagementRates.length
       : null;
-  const points = useMemo(() => {
-    const m = new Map<string, number[]>();
-    for (const s of dataset?.snapshots ?? []) {
-      if ((start && s.date < start) || s.date > end || number(s.views) === null)
-        continue;
-      const values = m.get(s.date) ?? [];
-      values.push(number(s.views)!);
-      m.set(s.date, values);
-    }
-    return [...m]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, values]) => ({ date, views: sum(values) }));
-  }, [dataset?.snapshots, start, end]);
   const categoryPoints = categories
     .map((c) => ({
       category: c,
@@ -416,7 +417,6 @@ export default function Studio() {
         ideaId: idea.id,
         title: idea.title,
         category: idea.category,
-        duration: idea.duration,
       },
     });
   };
@@ -426,6 +426,32 @@ export default function Studio() {
       record,
       title: record?.id ? "Refine your plan" : "Put it on the calendar",
     });
+  const analyticsPlatformControl = (
+    <div
+      className="analytics-platform-tabs"
+      role="group"
+      aria-label="Analytics platform"
+    >
+      {platforms.map((p) => (
+        <button
+          key={p}
+          type="button"
+          aria-label={p}
+          aria-pressed={analyticsPlatform === p}
+          onClick={() => {
+            setAnalyticsPlatform(p);
+            localStorage.setItem("cs-analytics-platform", p);
+          }}
+        >
+          <PlatformIcon platform={p} />
+          {p}
+        </button>
+      ))}
+    </div>
+  );
+  const analyticsVideos = (dataset?.videos ?? []).filter(
+    (v) => !!v[platformPrefix(analyticsPlatform) + "Url"],
+  );
   const rangeControl = (
     <div className="range-control">
       <select
@@ -887,18 +913,25 @@ export default function Studio() {
                       </h2>
                       {rangeControl}
                     </div>
+                    {analyticsPlatformControl}
                     <div className="stats-grid">
                       <Stat
-                        label="Published stories"
-                        value={fmt(dataset.videos.length)}
+                        label={analyticsPlatform + " published stories"}
+                        value={fmt(analyticsVideos.length)}
                         icon={<Clapperboard size={17} />}
-                        detail={`${dataset.videos.filter((v) => [v.igDate, v.tiktokDate, v.youtubeDate].some((d) => d >= dayAdd(today(), -6) && d <= today())).length} videos in the last 7 days`}
+                        detail={`${
+                          analyticsVideos.filter((v) => {
+                            const d =
+                              v[platformPrefix(analyticsPlatform) + "Date"];
+                            return d >= dayAdd(today(), -6) && d <= today();
+                          }).length
+                        } ${analyticsPlatform} posts in the last 7 days`}
                       />
                       <Stat
-                        label="Recorded views"
+                        label={analyticsPlatform + " recorded views"}
                         value={fmt(viewTotal)}
                         icon={<TrendingUp size={17} />}
-                        detail={`${observed.filter((s) => number(s.views) !== null).length} latest platform observations`}
+                        detail={`${observed.filter((s) => number(s.views) !== null).length} latest ${analyticsPlatform} observations`}
                       />
                       <Stat
                         label="Avg. engagement rate"
@@ -925,7 +958,7 @@ export default function Studio() {
                       <section className="panel views-panel">
                         <div className="panel-heading">
                           <div>
-                            <h2>A story in numbers</h2>
+                            <h2>{analyticsPlatform} in numbers</h2>
                             <p className="muted small">
                               Recorded cumulative views at each observation date
                             </p>
@@ -1574,9 +1607,6 @@ export default function Studio() {
                     </div>
                     <div className="published-grid">
                       {filteredVideos.map((v, i) => {
-                        const observations = latest(
-                          dataset.snapshots.filter((s) => s.videoId === v.id),
-                        );
                         return (
                           <article className="panel published-card" key={v.id}>
                             <div className={"published-art visual-" + (i % 5)}>
@@ -1584,11 +1614,7 @@ export default function Studio() {
                               <div className="play-circle">
                                 <Video size={22} />
                               </div>
-                              <span>
-                                {v.duration
-                                  ? v.duration + " SECONDS"
-                                  : "PUBLISHED STORY"}
-                              </span>
+                              <span>PUBLISHED STORY</span>
                             </div>
                             <div className="published-body">
                               <div className="card-meta">
@@ -1611,70 +1637,11 @@ export default function Studio() {
                               >
                                 <h3>{v.title}</h3>
                               </button>
-                              <div className="post-links">
-                                {platforms.map((p) => {
-                                  const key =
-                                    p === "Instagram"
-                                      ? "ig"
-                                      : p === "TikTok"
-                                        ? "tiktok"
-                                        : "youtube";
-                                  return (
-                                    v[key + "Url"] && (
-                                      <a
-                                        key={p}
-                                        href={v[key + "Url"]}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                      >
-                                        <PlatformIcon platform={p} />
-                                        {p} <ExternalLink size={12} />
-                                      </a>
-                                    )
-                                  );
-                                })}
-                              </div>
-                              <div className="published-metrics">
-                                <span>
-                                  <strong>
-                                    {fmt(
-                                      sum(
-                                        observations.map((s) =>
-                                          number(s.views),
-                                        ),
-                                      ),
-                                    )}
-                                  </strong>
-                                  recorded views
-                                </span>
-                                <span>
-                                  <strong>
-                                    {fmt(
-                                      sum(
-                                        observations.map((s) =>
-                                          number(s.likes),
-                                        ),
-                                      ),
-                                    )}
-                                  </strong>
-                                  recorded likes
-                                </span>
-                                <span>
-                                  <strong>{observations.length}</strong>
-                                  platforms tracked
-                                </span>
-                              </div>
-                              <p className="muted small">
-                                Latest observation:{" "}
-                                {observations.length
-                                  ? dateLabel(
-                                      observations
-                                        .map((s) => s.date)
-                                        .sort()
-                                        .at(-1)!,
-                                    )
-                                  : "No snapshots yet"}
-                              </p>
+                              <PublishedPlatforms
+                                video={v}
+                                snapshots={dataset.snapshots}
+                                filter={platform}
+                              />
                               <p className="muted small">
                                 Related idea:{" "}
                                 {dataset.ideas.find((i) => i.id === v.ideaId)
@@ -1689,7 +1656,14 @@ export default function Studio() {
                                   onClick={() =>
                                     setEditing({
                                       entity: "snapshots",
-                                      record: { videoId: v.id, title: v.title },
+                                      record: {
+                                        videoId: v.id,
+                                        title: v.title,
+                                        platform:
+                                          platform === "All platforms"
+                                            ? "Instagram"
+                                            : platform,
+                                      },
                                       title: "Record performance",
                                     })
                                   }
@@ -1709,30 +1683,10 @@ export default function Studio() {
                                   Edit details <ArrowUpRight size={14} />
                                 </button>
                               </div>
-                              <details>
-                                <summary>
-                                  Observation history (
-                                  {
-                                    dataset.snapshots.filter(
-                                      (s) => s.videoId === v.id,
-                                    ).length
-                                  }
-                                  )
-                                </summary>
-                                {dataset.snapshots
-                                  .filter((s) => s.videoId === v.id)
-                                  .sort((a, b) => b.date.localeCompare(a.date))
-                                  .map((s) => (
-                                    <div className="snapshot-line" key={s.id}>
-                                      <span>
-                                        {dateLabel(s.date)} · {s.platform}
-                                      </span>
-                                      <strong>
-                                        {fmt(number(s.views))} views
-                                      </strong>
-                                    </div>
-                                  ))}
-                              </details>
+                              <ObservationHistory
+                                videoId={v.id}
+                                snapshots={dataset.snapshots}
+                              />
                             </div>
                           </article>
                         );
@@ -1746,25 +1700,28 @@ export default function Studio() {
                 {path === "analytics" && (
                   <>
                     <div className="section-top">
-                      <h2>Let the observations speak.</h2>
+                      <h2>{analyticsPlatform} analytics</h2>
                       {rangeControl}
                     </div>
+                    {analyticsPlatformControl}
                     <div className="stats-grid">
-                      {platforms.map((p) => (
-                        <Stat
-                          key={p}
-                          label={p + " recorded views"}
-                          value={fmt(
-                            sum(
-                              observed
-                                .filter((s) => s.platform === p)
-                                .map((s) => number(s.views)),
-                            ),
-                          )}
-                          icon={<PlatformIcon platform={p} />}
-                          detail={`${observed.filter((s) => s.platform === p).length} video observations`}
-                        />
-                      ))}
+                      <Stat
+                        label={analyticsPlatform + " recorded views"}
+                        value={fmt(viewTotal)}
+                        icon={<PlatformIcon platform={analyticsPlatform} />}
+                        detail={observed.length + " latest video observations"}
+                      />
+                      <Stat
+                        label="Avg. engagement rate"
+                        value={avgRate === null ? "—" : fmt(avgRate, 2) + "%"}
+                        icon={<Flame size={17} />}
+                        detail={
+                          engagementRates.length +
+                          " complete " +
+                          analyticsPlatform +
+                          " observations"
+                        }
+                      />
                       <Stat
                         label="Recorded engagement"
                         value={fmt(
@@ -1848,6 +1805,7 @@ export default function Studio() {
                                 "Views",
                                 "Likes",
                                 "Eng. rate",
+                                "Avg. watched",
                                 "Saves",
                                 "Shares",
                                 "Follows",
@@ -1911,6 +1869,12 @@ export default function Studio() {
                                     {engagement(s) === null
                                       ? "—"
                                       : fmt(engagement(s), 2) + "%"}
+                                  </td>
+                                  <td>
+                                    {averageWatchedPercent(s, v) === null
+                                      ? "—"
+                                      : fmt(averageWatchedPercent(s, v), 1) +
+                                        "%"}
                                   </td>
                                   <td>{fmt(number(s.saves))}</td>
                                   <td>{fmt(number(s.shares))}</td>
@@ -2026,8 +1990,11 @@ export default function Studio() {
                           recorded.
                         </p>
                         <p>
-                          Rates are averaged across complete observations. A
-                          dash means unknown, not zero. View change compares
+                          Average watched = average watch seconds ÷ the actual
+                          duration of this platform version × 100. Missing or
+                          zero duration is shown as unknown; loops can exceed
+                          100%. Rates are averaged across complete observations.
+                          A dash means unknown, not zero. View change compares
                           consecutive recorded observations and can be negative
                           after a platform correction.
                         </p>

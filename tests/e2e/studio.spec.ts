@@ -366,3 +366,72 @@ test('pipeline cancellation prompts for a reason without saving on open', async 
   await expect(page.getByRole('dialog')).not.toBeVisible();
   await expect(control).toHaveValue('Cancelled');
 });
+
+
+test('platform versions stay in one card and analytics never mix platforms', async ({page}) => {
+  test.setTimeout(120000);
+  await page.goto('/dashboard');
+  await page.getByLabel('Workspace password').fill(process.env.E2E_PASSWORD || 'content-studio-local-2026');
+  const loginResponse=page.waitForResponse(r=>r.url().endsWith('/api/session') && r.request().method()==='POST');
+  await page.getByRole('button',{name:'Enter your studio'}).click();
+  if((await loginResponse).status()===429) {
+    await expect.poll(async()=> (await page.request.post('/api/session',{headers:{Origin:new URL(page.url()).origin},data:{password:process.env.E2E_PASSWORD || 'content-studio-local-2026'}})).status(),{timeout:70000,intervals:[10000]}).toBe(200);
+    await page.goto('/dashboard');
+  }
+  await expect(page.locator('.stats-grid')).toBeVisible();
+  expect((await (await page.request.get('/api/studio')).json()).mode).toBe('demo');
+  await page.evaluate(() => {
+    const dataset=JSON.parse(localStorage.getItem('cs-hosted-demo') || localStorage.getItem('cs-offline')!);
+    const date=(offset:number)=>{const d=new Date();d.setUTCDate(d.getUTCDate()+offset);return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit',day:'2-digit'}).format(d)};
+    dataset.videos=[{id:'platform-story',version:'demo-1',title:'Two versions of one story',category:'Workday',duration:'60',igUrl:'https://instagram.com/reel/version/',tiktokUrl:'https://tiktok.com/@creator/video/123',igDuration:'45',tiktokDuration:'70',igDate:date(-5),tiktokDate:date(-20)}];
+    dataset.snapshots=[
+      {id:'ig-old',version:'demo-1',videoId:'platform-story',title:'Two versions of one story',platform:'Instagram',date:date(-10),views:'3742',likes:'60',avgWatch:'30'},
+      {id:'ig-new',version:'demo-1',videoId:'platform-story',title:'Two versions of one story',platform:'Instagram',date:date(-5),views:'3779',likes:'70',avgWatch:'30'},
+      {id:'tt',version:'demo-1',videoId:'platform-story',title:'Two versions of one story',platform:'TikTok',date:date(-20),views:'245',likes:'4',avgWatch:'30'},
+    ];
+    dataset.mode='demo';dataset.persistence='browser';localStorage.setItem('cs-hosted-demo',JSON.stringify(dataset));
+  });
+  await page.goto('/published');
+  const card=page.locator('.published-card');
+  await expect(card).toHaveCount(1);
+  const ig=card.getByRole('region',{name:'Instagram performance',exact:true});
+  const tt=card.getByRole('region',{name:'TikTok performance',exact:true});
+  await expect(ig).toContainText('3,779');await expect(ig).toContainText('45 sec');await expect(ig).toContainText('66.7%');
+  await expect(tt).toContainText('245');await expect(tt).toContainText('70 sec');await expect(tt).toContainText('42.9%');
+  await expect(card).not.toContainText('4,024');
+  await card.getByText('Observation history (3)',{exact:true}).click();
+  await card.getByLabel('Observation history platform').selectOption('TikTok');
+  await expect(card.locator('.snapshot-line')).toHaveCount(1);
+  await expect(card.locator('.snapshot-line')).toContainText('245 views');
+  await card.getByRole('button',{name:'Edit details',exact:false}).click();
+  await expect(page.getByText('Previous shared duration: 60 seconds (preserved).', {exact:false})).toBeVisible();
+  await page.getByLabel('Instagram duration (seconds)',{exact:true}).fill('50');
+  await page.getByLabel('TikTok duration (seconds)',{exact:true}).fill('75');
+  await page.getByRole('button',{name:'Save changes',exact:true}).click();
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await page.reload();
+  await expect(ig).toContainText('50 sec');await expect(tt).toContainText('75 sec');
+  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('cs-hosted-demo')!));
+  expect(saved.videos[0].duration).toBe('60');expect(saved.snapshots).toHaveLength(3);
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+  await page.screenshot({path:'test-results/platform-card-mobile.png',fullPage:true});
+  await page.goto('/dashboard');
+  const tabs=page.getByRole('group',{name:'Analytics platform',exact:true});
+  await expect(tabs.getByRole('button',{name:'Instagram',exact:true})).toHaveAttribute('aria-pressed','true');
+  await expect(page.locator('.stats-grid')).toContainText('3,779');await expect(page.locator('.stats-grid')).not.toContainText('4,024');
+  await tabs.getByRole('button',{name:'TikTok',exact:true}).click();
+  await expect(page.locator('.stats-grid')).toContainText('245');await expect(page.locator('.story-table')).not.toContainText('Instagram');
+  await page.goto('/analytics');
+  await expect(page.getByRole('heading',{name:'TikTok analytics',exact:true})).toBeVisible();
+  await expect(page.locator('.analytics-table tbody tr')).toHaveCount(1);
+  await expect(page.locator('.analytics-table tbody tr')).toContainText('245');
+  await expect(page.locator('.analytics-table tbody tr')).toContainText('40%');
+  await page.reload();await expect(tabs.getByRole('button',{name:'TikTok',exact:true})).toHaveAttribute('aria-pressed','true');
+  await tabs.getByRole('button',{name:'YouTube',exact:true}).click();
+  await expect(page.locator('.analytics-table tbody tr')).toHaveCount(0);
+  await expect(page.getByText('No recorded metrics in this date range.',{exact:true})).toBeVisible();
+  await tabs.getByRole('button',{name:'Instagram',exact:true}).click();
+  await expect(page.locator('.analytics-table tbody tr')).toHaveCount(1);
+  await expect(page.locator('.analytics-table tbody tr')).toContainText('3,779');
+});

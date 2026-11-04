@@ -15,6 +15,28 @@ afterAll(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 describe("Repository mutations and conflicts", () => {
+  it("persists independent platform durations across reads and leaves history unchanged", async () => {
+    const video = await save("videos", {
+      title: "Platform durations",
+      igUrl: "https://instagram.com/reel/versions/",
+      tiktokUrl: "https://tiktok.com/@creator/video/123",
+      duration: "60",
+    });
+    const before = await readDataset();
+    await save("videos", { ...video, igDuration: "45", tiktokDuration: "70" });
+    const after = await readDataset();
+    expect(after.videos.find((v) => v.id === video.id)).toMatchObject({
+      duration: "60",
+      igDuration: "45",
+      tiktokDuration: "70",
+      youtubeDuration: "",
+    });
+    expect(after.snapshots).toEqual(before.snapshots);
+    expect(after.ideas).toEqual(before.ideas);
+    await expect(
+      save("videos", { ...video, igDuration: "50" }),
+    ).rejects.toThrow(/changed/i);
+  });
   it("cancels ideas with a reason and pending schedules, then restores without restarting plans", async () => {
     const idea = await save("ideas", {
       title: "Cancellation test",

@@ -218,7 +218,6 @@ export default function Editor({
         ideaId: record?.id,
         title: getValues("title"),
         category: getValues("category"),
-        duration: getValues("duration"),
       },
     );
   };
@@ -451,7 +450,12 @@ export default function Editor({
                 true,
               )
             )}
-            {field("duration", "Duration (seconds)", undefined, "number")}
+            {record?.duration && (
+              <p className="form-note full">
+                Previous shared duration: {record.duration} seconds (preserved).
+                Enter the actual duration of each uploaded version below.
+              </p>
+            )}
             {platforms.map((p) => {
               const prefix =
                 p === "Instagram"
@@ -464,6 +468,12 @@ export default function Editor({
                   <h3>{p}</h3>
                   <div className="form-grid">
                     {field(prefix + "Url", p + " post link", undefined, "url")}
+                    {field(
+                      prefix + "Duration",
+                      p + " duration (seconds)",
+                      undefined,
+                      "number",
+                    )}
                     {field(
                       prefix + "Date",
                       "Actual publish date",

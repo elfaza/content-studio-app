@@ -101,6 +101,12 @@ npm run test:e2e
 
 Unit/integration tests use isolated temporary demo files and mock Google APIs; they require no Google credentials. Playwright runs against the local server, using the installed Microsoft Edge browser (`channel: msedge`). Set `E2E_PASSWORD` if you changed the workspace password. Install Edge or change the Playwright channel for another environment. End-to-end tests create demo records; run them against demo mode only. Tests refuse to mutate a live workspace.
 
+## Platform versions and performance
+
+One published content card contains separate Instagram, TikTok, and YouTube performance sections. Edit published post links to enter each platform version's actual duration. The idea's target duration remains a production planning value. Old shared durations are preserved and are not treated as actual durations for every platform. Missing values display as unknown.
+
+Dashboard and Analytics follow the selected platform (remembered on the device), including views, engagement, observation charts, rankings, and category comparisons. Headline views use the latest observation for each video within the selected dates; they do not sum snapshots across history or platforms. Average watched percentage uses the actual duration of the same platform's version.
+
 ## Cancel an idea
 
 Use **Cancel idea** in the Idea library, pipeline stage menu, or idea editor. A reason is required. Cancellation keeps the idea and its notes, records the reason, excludes it from active production, and cancels its pending schedules in the same coordinated save. **Restore idea** returns it to its previous stage without restarting old schedules. Original sheet columns are unchanged; cancellation details live in the existing metadata sidecar.

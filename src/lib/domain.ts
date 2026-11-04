@@ -11,6 +11,13 @@ export const stages = [
 ] as const;
 export const platforms = ["Instagram", "TikTok", "YouTube"] as const;
 export type Platform = (typeof platforms)[number];
+export function platformPrefix(platform: string) {
+  return platform === "Instagram"
+    ? "ig"
+    : platform === "TikTok"
+      ? "tiktok"
+      : "youtube";
+}
 export const ideaFields = {
   "Date Found": "date",
   Priority: "priority",
@@ -164,6 +171,9 @@ export const videoSchema = z
     category: text,
     ideaId: text,
     duration: numeric,
+    igDuration: numeric,
+    tiktokDuration: numeric,
+    youtubeDuration: numeric,
     igDate: optionalDate,
     igTime: optionalTime,
     igUrl: url,
