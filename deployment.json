@@ -2,9 +2,9 @@
   "provider": "vercel",
   "projectId": "prj_oag1EA0yrpc66mJC55AG4iyvo9l7",
   "teamId": "team_hSmf5K3G7vMTH3seqMHKaM56",
-  "deploymentId": "dpl_xY6Uzd5wctQupRTfEgPNGTj4fNZr",
+  "deploymentId": "dpl_FedqZSGS965iGVEE5VqpDvGpDSxz",
   "url": "https://content-studio-xi-peach.vercel.app",
-  "sourceCommit": "5dbf847f615760b680fba4b1a028e1cbe8649929",
+  "sourceCommit": "f002b16165b6e5e1e9283600b15f5a3794000f5a",
   "googleAuthMode": "oauth",
   "credentialStorage": "private encrypted Vercel Blob",
   "blobStoreId": "store_OJffxg5O3i8lNsqi",
@@ -13,12 +13,17 @@
   "legacyFallbackOnConfirmedAbsenceOnly": true,
   "googleConsentRoundTripPending": true,
   "verified": {
-    "unitIntegrationTests": 51,
-    "browserTests": 9,
+    "unitIntegrationTests": 55,
+    "browserTests": 11,
     "privateBlobAtomicWrites": true,
     "privateBlobConsistentReads": true,
     "productionBuild": true,
-    "productionInvalidCallbackRejected": true
+    "productionInvalidCallbackRejected": true,
+    "cancellationAndRestoreDemo": true,
+    "atomicCancellationMock": true,
+    "productionPrivateApiProtected": true,
+    "productionErrorLogScan": "No error or fatal records returned for this deployment immediately after release"
   },
-  "spreadsheetWritesDuringVerification": 0
+  "spreadsheetWritesDuringVerification": 0,
+  "cancelIdeasWithReasons": true
 }
