@@ -10,16 +10,16 @@ import { today, type RecordData } from "./domain";
 type GraphResult = {
   id?: unknown;
   username?: unknown;
-  system_user_id?: unknown;
   data?: unknown;
   paging?: { next?: string; cursors?: { after?: string } };
-  error?: { code?: number; message?: string };
+  error?: { code?: number; error_subcode?: number; message?: string };
 };
 export async function instagramGraph(
   path: string,
   token: string,
   params: Record<string, string> = {},
   optionalMetric = false,
+  stage?: "identity_mapping",
 ): Promise<GraphResult> {
   if (
     !/^(me|\d+|me\/assigned_instagram_accounts|\d+\/(media|insights))$/.test(
@@ -28,6 +28,17 @@ export async function instagramGraph(
   )
     throw new InstagramError("Invalid Instagram request.");
   const url = new URL(`https://graph.facebook.com/${graphVersion()}/${path}`);
+  const requestStage =
+    stage ||
+    (path === "me"
+      ? "identity"
+      : path.endsWith("/assigned_instagram_accounts")
+        ? "assigned_accounts"
+        : path.endsWith("/media")
+          ? "media"
+          : path.endsWith("/insights")
+            ? "insights"
+            : "profile");
   url.search = new URLSearchParams(params).toString();
   let response: Response, result: GraphResult;
   try {
@@ -47,15 +58,28 @@ export async function instagramGraph(
     );
   }
   if (response.ok && !result.error) return result;
+  // Never surface provider messages, request URLs, headers, or response bodies.
+  // Only fixed stage names and numeric error codes are safe diagnostic details.
+  const safeCode = Number.isSafeInteger(result.error?.code)
+    ? result.error!.code
+    : response.status;
+  const safeSubcode = Number.isSafeInteger(result.error?.error_subcode)
+    ? `_${result.error!.error_subcode}`
+    : "";
+  const reference = ` Reference: IG_${requestStage.toUpperCase()}_${safeCode}${safeSubcode}.`;
   if (result.error?.code === 190)
     throw new InstagramError(
-      "Instagram access expired or was revoked. Reconnect Instagram in Settings.",
+      "Instagram access expired or was revoked. Reconnect Instagram in Settings." +
+        reference,
       428,
       true,
     );
   if ([10, 200].includes(result.error?.code ?? 0))
     throw new InstagramError(
-      "Instagram did not grant Insights access. Check the login configuration and reconnect Instagram.",
+      "Meta denied access at the Instagram " +
+        requestStage.replaceAll("_", " ") +
+        " check. Check the token permissions and assigned assets." +
+        reference,
       428,
       true,
     );
@@ -66,7 +90,10 @@ export async function instagramGraph(
   )
     return { data: [] };
   throw new InstagramError(
-    "Instagram could not return these statistics. Check access and try again later. No statistics were saved.",
+    "Meta could not complete the Instagram " +
+      requestStage.replaceAll("_", " ") +
+      " check. No statistics were saved." +
+      reference,
   );
 }
 export function instagramShortcode(value: string) {

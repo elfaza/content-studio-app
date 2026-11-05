@@ -131,6 +131,7 @@ function systemUserProvider() {
       expect(String(url)).not.toContain("private-system-token");
       const path = new URL(url).pathname;
       if (path.endsWith("/me")) return json({ id: "55" });
+      if (path.endsWith("/55")) return json({ id: "55" });
       if (path.endsWith("/987"))
         return json({ id: "987", username: "creator" });
       if (path.endsWith("/987/media")) return json({ data: [] });
@@ -193,38 +194,79 @@ it("rejects mismatched System Users, mismatched profiles and denied media access
     .mockResolvedValueOnce(
       json({ error: { code: 200, message: "private-system-token" } }, 400),
     );
-  await expect(connectInstagramSystemUser()).rejects.toThrow("did not grant");
+  await expect(connectInstagramSystemUser()).rejects.toThrow("IG_MEDIA_200");
   expect(await readInstagramCredential()).toEqual(previous);
 });
-it.each(["55", 55])(
-  "accepts a matching canonical System User ID when Graph returns an app-scoped id (%s)",
-  async (canonicalId) => {
-    systemUserProvider();
-    m.fetch.mockResolvedValueOnce(
-      json({ id: "999999", system_user_id: canonicalId }),
-    );
-    await expect(connectInstagramSystemUser()).resolves.toEqual({
-      username: "creator",
-    });
-    expect(new URL(m.fetch.mock.calls[0][0]).searchParams.get("fields")).toBe(
-      "id,system_user_id",
-    );
-  },
-);
+it("accepts an app-scoped identity only when the configured System User resolves to that same id", async () => {
+  systemUserProvider();
+  m.fetch
+    .mockResolvedValueOnce(json({ id: "999999" }))
+    .mockResolvedValueOnce(json({ id: "999999" }));
+  await expect(connectInstagramSystemUser()).resolves.toEqual({
+    username: "creator",
+  });
+  expect(new URL(m.fetch.mock.calls[0][0]).searchParams.get("fields")).toBe(
+    "id",
+  );
+  expect(new URL(m.fetch.mock.calls[1][0]).pathname).toBe("/v25.0/55");
+});
 it.each(["66", 66, null, {}, 9007199254740992])(
-  "rejects a different or invalid canonical System User ID (%s)",
-  async (canonicalId) => {
+  "rejects a different or invalid resolved System User ID (%s)",
+  async (mappedId) => {
     systemUserProvider();
-    m.fetch.mockResolvedValueOnce(
-      json({ id: "999999", system_user_id: canonicalId }),
-    );
+    m.fetch
+      .mockResolvedValueOnce(json({ id: "999999" }))
+      .mockResolvedValueOnce(json({ id: mappedId }));
     await expect(connectInstagramSystemUser()).rejects.toThrow(
       "IG_SYSTEM_USER_MISMATCH",
     );
     expect(m.put).not.toHaveBeenCalled();
-    expect(m.fetch).toHaveBeenCalledTimes(1);
+    expect(m.fetch).toHaveBeenCalledTimes(2);
   },
 );
+it.each([
+  ["me", "IG_IDENTITY_100_33"],
+  ["987", "IG_PROFILE_100_33"],
+  ["987/media", "IG_MEDIA_100_33"],
+  ["987/insights", "IG_INSIGHTS_100_33"],
+] as const)(
+  "reports only safe stage/code diagnostics for %s",
+  async (path, reference) => {
+    m.fetch.mockResolvedValue(
+      json(
+        {
+          error: {
+            code: 100,
+            error_subcode: 33,
+            message: "provider-private-token secret",
+          },
+        },
+        400,
+      ),
+    );
+    await expect(instagramGraph(path, "private-token")).rejects.toThrow(
+      reference,
+    );
+    try {
+      await instagramGraph(path, "private-token");
+    } catch (error) {
+      expect((error as Error).message).not.toContain("secret");
+      expect((error as Error).message).not.toContain("private-token");
+    }
+  },
+);
+it("fails closed when the System User mapping is inaccessible and reports that exact check", async () => {
+  systemUserProvider();
+  m.fetch
+    .mockResolvedValueOnce(json({ id: "999999" }))
+    .mockResolvedValueOnce(
+      json({ error: { code: 100, message: "private-token" } }, 400),
+    );
+  await expect(connectInstagramSystemUser()).rejects.toThrow(
+    "IG_IDENTITY_MAPPING_100",
+  );
+  expect(m.put).not.toHaveBeenCalled();
+});
 it("does not import on status reads, fail over on corrupt storage, or retry uncertain System User writes", async () => {
   systemUserProvider();
   m.cookies.set("cs-session", token());

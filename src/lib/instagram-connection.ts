@@ -48,19 +48,24 @@ export async function connectInstagramSystemUser() {
     );
   const saved = await readInstagramPrivate(instagramPath("credential.v1.json"));
   const { instagramGraph } = await import("./instagram-graph");
-  const identity = await instagramGraph("me", token, {
-    fields: "id,system_user_id",
-  });
-  // Graph's id can be app-scoped. Compare the portfolio's canonical System
-  // User ID too; never accept an unrelated identity solely on asset access.
-  const canonicalId =
-    typeof identity.system_user_id === "string"
-      ? identity.system_user_id
-      : typeof identity.system_user_id === "number" &&
-          Number.isSafeInteger(identity.system_user_id)
-        ? String(identity.system_user_id)
-        : null;
-  if (identity.id !== systemUserId && canonicalId !== systemUserId)
+  const identity = await instagramGraph("me", token, { fields: "id" });
+  // Resolve the configured portfolio node using the same token. Meta can map
+  // that node to an app-scoped id; compare the resolved ids, not raw namespaces.
+  const configuredIdentity =
+    identity.id === systemUserId
+      ? identity
+      : await instagramGraph(
+          systemUserId,
+          token,
+          { fields: "id" },
+          false,
+          "identity_mapping",
+        );
+  if (
+    typeof identity.id !== "string" ||
+    !/^\d+$/.test(identity.id) ||
+    configuredIdentity.id !== identity.id
+  )
     throw new InstagramError(
       "Meta's token identity does not match the configured System User, including its portfolio ID. Generate the token from studioinsights for the Content Studio app, replace the server token, and validate again. Reference: IG_SYSTEM_USER_MISMATCH.",
       428,
