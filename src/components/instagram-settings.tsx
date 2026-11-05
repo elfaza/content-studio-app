@@ -56,7 +56,7 @@ export function InstagramSettings({
         return;
       }
       setMessage(
-        `Instagram synced: ${body.added} added, ${body.updated} updated, ${body.unchanged} unchanged. ${body.manualKept} manual observations kept. ${body.unmatched.length} post links could not be matched or had no available metrics.`,
+        `Instagram synced: ${body.added} added, ${body.updated} updated, ${body.unchanged} unchanged. ${body.manualUpdated ?? 0} manual observations refreshed; previous values kept in correction history. ${body.unmatched.length} post links could not be matched or had no available metrics.`,
       );
       try {
         await onSynced();
@@ -143,9 +143,10 @@ export function InstagramSettings({
         </button>
       </div>
       <p className="muted small">
-        Existing manual snapshots are kept. Sync updates only its own Instagram
-        snapshot for today and preserves prior values in correction history.
-        Unavailable metrics stay unknown; TikTok and YouTube are unchanged.
+        Sync refreshes available Instagram metrics on today&apos;s snapshot,
+        including manual observations. Previous values are kept in correction
+        history. Duration, watch metrics, older dates, TikTok and YouTube are
+        unchanged.
       </p>
       {error && (
         <p className="error" role="alert">

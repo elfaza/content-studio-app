@@ -42,8 +42,19 @@ export async function POST(req: NextRequest) {
         409,
       );
     const counts = result.observations.length
-      ? await saveInstagramObservations(result.observations)
-      : { added: 0, updated: 0, unchanged: 0, manualKept: 0 };
+      ? await saveInstagramObservations(
+          result.observations.map((item) => ({
+            ...item,
+            snapshotVersion:
+              dataset.snapshots.find(
+                (snapshot) =>
+                  snapshot.videoId === item.videoId &&
+                  snapshot.platform === "Instagram" &&
+                  snapshot.date === item.date,
+              )?.version ?? null,
+          })),
+        )
+      : { added: 0, updated: 0, unchanged: 0, manualUpdated: 0 };
     return NextResponse.json(
       { ...counts, unmatched: result.unmatched, username: result.username },
       { headers: { "Cache-Control": "no-store" } },

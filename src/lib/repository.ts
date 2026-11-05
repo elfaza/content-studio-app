@@ -399,7 +399,7 @@ export async function saveInstagramObservations(input: InstagramObservation[]) {
       let meta = inspection.meta;
       if (meta && metadataHeaders.some((h, i) => meta!.headers[i] !== h))
         throw new AppError("Review metadata column order before syncing.", 409);
-      const summary = { added: 0, updated: 0, unchanged: 0, manualKept: 0 };
+      const summary = { added: 0, updated: 0, unchanged: 0, manualUpdated: 0 };
       for (const item of input) {
         const video = dataset.videos.find((v) => v.id === item.videoId);
         if (
@@ -438,10 +438,14 @@ export async function saveInstagramObservations(input: InstagramObservation[]) {
             409,
           );
         const existing = matches[0];
-        if (existing && existing.automaticProvider !== "instagram") {
-          summary.manualKept++;
-          continue;
-        }
+        if (
+          item.snapshotVersion !== undefined &&
+          (existing?.version ?? null) !== item.snapshotVersion
+        )
+          throw new AppError(
+            "An Instagram observation changed while statistics were loading. Refresh and sync again.",
+            409,
+          );
         if (
           existing &&
           (Number(existing.instagramFetchedAt) >= item.fetchedAt ||
@@ -454,7 +458,7 @@ export async function saveInstagramObservations(input: InstagramObservation[]) {
           ...existing,
           ...metrics,
           videoId: video.id,
-          title: video.title,
+          title: existing?.title || video.title,
           platform: "Instagram",
           date: item.date,
           source: "Instagram API",
@@ -517,6 +521,8 @@ export async function saveInstagramObservations(input: InstagramObservation[]) {
             });
           }
           summary.updated++;
+          if (existing?.automaticProvider !== "instagram")
+            summary.manualUpdated++;
         }
         if (!meta) {
           meta = {

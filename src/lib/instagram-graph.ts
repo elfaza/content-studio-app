@@ -130,6 +130,7 @@ export type InstagramObservation = {
   igUrl: string;
   date: string;
   fetchedAt: number;
+  snapshotVersion?: string | null;
   metrics: Record<string, string>;
 };
 export async function collectInstagram(videos: RecordData[]) {

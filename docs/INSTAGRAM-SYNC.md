@@ -30,7 +30,7 @@ Sync reads the connected account's assigned Instagram assets and published media
 
 Supported values are available views, likes, comments, shares, and saves. A measured zero is retained; missing or unsupported metrics stay unknown. Watch metrics, duration, and other platforms are not changed. The snapshot date is the retrieval date in Asia/Jakarta, and values are cumulative totals, not differences.
 
-The server fetches all results before writing. One shared spreadsheet lock and one atomic content/metadata batch commit protect each sync. Manual observations for the same video/platform/date are skipped. Sync updates only its own Instagram observation for that day, preserving previous values in correction history. Unchanged or older results are skipped. Changed post links/versions, duplicate observations, formula cells, and unresolved metadata block the entire write. Writes with an uncertain result are never retried automatically.
+The server fetches all results before writing. One shared spreadsheet lock and one atomic content/metadata batch commit protect each sync. Sync refreshes available API metrics on the same video/Instagram/date observation, including manually entered or corrected observations. The row ID is retained and previous values are appended to correction history. Missing API metrics, duration, watch metrics, older dates and other platforms are preserved. A refreshed manual observation is marked as Instagram-managed. Unchanged or older fetched results are skipped. Changed post links/versions, duplicate observations, formula cells, and unresolved metadata block the entire write. Writes with an uncertain result are never retried automatically.
 
 ## Connection security
 

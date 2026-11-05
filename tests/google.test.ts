@@ -137,13 +137,21 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 describe("Official Google adapter preservation", () => {
   async function instagramInput() {
-    const video = (await readDataset()).videos[0];
+    const dataset = await readDataset();
+    const video = dataset.videos[0];
     return {
       videoId: video.id,
       videoVersion: video.version,
       igUrl: video.igUrl,
       date: today(),
       fetchedAt: Date.now(),
+      snapshotVersion:
+        dataset.snapshots.find(
+          (snapshot) =>
+            snapshot.videoId === video.id &&
+            snapshot.platform === "Instagram" &&
+            snapshot.date === today(),
+        )?.version ?? null,
       metrics: { views: "500", likes: "0", comments: "2" },
     };
   }
@@ -153,7 +161,7 @@ describe("Official Google adapter preservation", () => {
       added: 1,
       updated: 0,
       unchanged: 0,
-      manualKept: 0,
+      manualUpdated: 0,
     });
     const requests = contentRequests();
     expect(JSON.stringify(requests)).toContain("automaticProvider");
@@ -170,7 +178,7 @@ describe("Official Google adapter preservation", () => {
     expect(mock.batchUpdate).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(tabs)).toBe(before);
   });
-  it("keeps a manual observation for today rather than overwriting it", async () => {
+  it("refreshes today's manual Instagram metrics with history while preserving watch metrics, other dates and platforms", async () => {
     tabs["Performance Tracker"].rows = [
       makeRow(snapshotFields, {
         videoId: "VID-001",
@@ -178,12 +186,50 @@ describe("Official Google adapter preservation", () => {
         platform: "Instagram",
         date: today(),
         views: "100",
+        likes: "7",
+        shares: "8",
+        avgWatch: "12",
+        notes: "Keep manual notes",
+      }),
+      makeRow(snapshotFields, {
+        videoId: "VID-001",
+        platform: "TikTok",
+        date: today(),
+        views: "3526",
+      }),
+      makeRow(snapshotFields, {
+        videoId: "VID-001",
+        platform: "Instagram",
+        date: "2025-01-01",
+        views: "90",
       }),
     ];
-    expect(
-      (await saveInstagramObservations([await instagramInput()])).manualKept,
-    ).toBe(1);
-    expect(contentRequests()).toEqual([]);
+    const input = await instagramInput();
+    const existing = (await readDataset()).snapshots[0];
+    expect(await saveInstagramObservations([input])).toMatchObject({
+      updated: 1,
+      manualUpdated: 1,
+      added: 0,
+    });
+    const requests = contentRequests();
+    const changed = requests.filter(
+      (r: { updateCells?: { range?: { sheetId: number } } }) =>
+        r.updateCells?.range?.sheetId === 3,
+    );
+    expect(changed.length).toBeGreaterThan(0);
+    const allowed = (["views", "likes", "comments", "source"] as const).map(
+      (k) => Object.values(snapshotFields).indexOf(k),
+    );
+    for (const r of changed) {
+      expect(r.updateCells.range.startRowIndex).toBe(1);
+      expect(allowed).toContain(r.updateCells.range.startColumnIndex);
+      expect(r.updateCells.fields).toBe("userEnteredValue");
+    }
+    const encoded = JSON.stringify(requests);
+    expect(encoded).toContain("correctionHistory");
+    expect(encoded).toContain(existing.id);
+    expect(encoded).toContain("Keep manual notes");
+    expect(encoded).toContain("automaticProvider");
   });
   it("updates only its own observation with correction history and rejects stale provider results", async () => {
     const raw = makeRow(snapshotFields, {
@@ -228,6 +274,7 @@ describe("Official Google adapter preservation", () => {
       automaticProvider: "instagram",
       instagramFetchedAt: String(input.fetchedAt + 10000),
     });
+    input.snapshotVersion = (await readDataset()).snapshots[0].version;
     expect((await saveInstagramObservations([input])).unchanged).toBe(1);
     expect(contentRequests()).toEqual([]);
   });
@@ -236,6 +283,22 @@ describe("Official Google adapter preservation", () => {
     input.videoVersion = "stale";
     await expect(saveInstagramObservations([input])).rejects.toThrow(
       "post changed",
+    );
+    expect(contentRequests()).toEqual([]);
+  });
+  it("does not overwrite a manual observation added while Instagram was loading", async () => {
+    const input = await instagramInput();
+    tabs["Performance Tracker"].rows = [
+      makeRow(snapshotFields, {
+        videoId: "VID-001",
+        title: "Manual",
+        platform: "Instagram",
+        date: today(),
+        views: "999",
+      }),
+    ];
+    await expect(saveInstagramObservations([input])).rejects.toThrow(
+      "observation changed",
     );
     expect(contentRequests()).toEqual([]);
   });
@@ -249,7 +312,7 @@ describe("Official Google adapter preservation", () => {
     );
     expect(mock.batchUpdate).toHaveBeenCalledTimes(2);
   });
-  it("protects an automatic snapshot formula and makes human corrections override future sync", async () => {
+  it("protects snapshot formulas and records the provenance of human corrections", async () => {
     const raw = makeRow(snapshotFields, {
       videoId: "VID-001",
       title: "Published story",

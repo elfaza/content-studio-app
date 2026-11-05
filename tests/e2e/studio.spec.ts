@@ -533,4 +533,10 @@ test('System User validation stays in Settings and enables explicit sync', async
   expect(page.url()).toContain('/settings');
   expect(validations).toBe(1);
   expect(syncs).toBe(0);
+  await page.route('**/api/instagram/sync', async route => route.fulfill({json:{added:0,updated:1,unchanged:2,manualUpdated:1,unmatched:[]}}));
+  const refreshed=page.waitForResponse(r=>r.url().endsWith('/api/studio') && r.request().method()==='GET');
+  await panel.getByRole('button',{name:'Sync Instagram',exact:true}).click();
+  await (await refreshed).finished();
+  await expect(panel.getByRole('status')).toContainText('1 manual observations refreshed; previous values kept in correction history');
+  expect(syncs).toBe(1);
 });
