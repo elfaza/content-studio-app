@@ -175,7 +175,7 @@ it("rejects mismatched System Users, mismatched profiles and denied media access
   systemUserProvider();
   m.fetch.mockResolvedValueOnce(json({ id: "wrong" }));
   await expect(connectInstagramSystemUser()).rejects.toThrow(
-    "different System User",
+    "IG_SYSTEM_USER_MISMATCH",
   );
   expect(await readInstagramCredential()).toEqual(previous);
   systemUserProvider();
@@ -196,6 +196,35 @@ it("rejects mismatched System Users, mismatched profiles and denied media access
   await expect(connectInstagramSystemUser()).rejects.toThrow("did not grant");
   expect(await readInstagramCredential()).toEqual(previous);
 });
+it.each(["55", 55])(
+  "accepts a matching canonical System User ID when Graph returns an app-scoped id (%s)",
+  async (canonicalId) => {
+    systemUserProvider();
+    m.fetch.mockResolvedValueOnce(
+      json({ id: "999999", system_user_id: canonicalId }),
+    );
+    await expect(connectInstagramSystemUser()).resolves.toEqual({
+      username: "creator",
+    });
+    expect(new URL(m.fetch.mock.calls[0][0]).searchParams.get("fields")).toBe(
+      "id,system_user_id",
+    );
+  },
+);
+it.each(["66", 66, null, {}, 9007199254740992])(
+  "rejects a different or invalid canonical System User ID (%s)",
+  async (canonicalId) => {
+    systemUserProvider();
+    m.fetch.mockResolvedValueOnce(
+      json({ id: "999999", system_user_id: canonicalId }),
+    );
+    await expect(connectInstagramSystemUser()).rejects.toThrow(
+      "IG_SYSTEM_USER_MISMATCH",
+    );
+    expect(m.put).not.toHaveBeenCalled();
+    expect(m.fetch).toHaveBeenCalledTimes(1);
+  },
+);
 it("does not import on status reads, fail over on corrupt storage, or retry uncertain System User writes", async () => {
   systemUserProvider();
   m.cookies.set("cs-session", token());

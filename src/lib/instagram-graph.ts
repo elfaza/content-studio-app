@@ -10,6 +10,7 @@ import { today, type RecordData } from "./domain";
 type GraphResult = {
   id?: unknown;
   username?: unknown;
+  system_user_id?: unknown;
   data?: unknown;
   paging?: { next?: string; cursors?: { after?: string } };
   error?: { code?: number; message?: string };

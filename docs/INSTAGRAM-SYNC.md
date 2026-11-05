@@ -22,6 +22,8 @@ Settings → Validate Instagram connection performs read-only identity, exact ac
 
 This setup cannot infer the token's actual expiry date and does not label it permanent or grant a fresh 60-day lifetime. If access expires or is revoked, replace the server token, deploy the changed configuration and validate again. This first-party route differs from OAuth reconnect: changing a Vercel environment variable requires a deployment.
 
+Identity validation requests `id,system_user_id` from Meta's SystemUser node. The app-scoped `id` or canonical `system_user_id` must match the configured portfolio System User ID; the exact Instagram profile and media access are checked separately. An unrelated token is never accepted merely because it can read an Instagram account. The `system_user_id` field is included in Meta's generated SystemUser SDK schema.
+
 Settings → Instagram insights → Connect Instagram. Approve the selected account and choose Continue to app. Then click Sync Instagram explicitly. Reconnecting replaces the encrypted server credential; it does not require copying a token or redeploying. Expiring or revoked access requires reconnecting; this system-user integration does not promise automatic token refresh.
 
 Sync reads the connected account's assigned Instagram assets and published media. It matches saved Instagram post links by shortcode, allowing Reel and post permalink forms for the same shortcode. It does not fetch user-supplied URLs or follow provider-supplied pagination URLs. Up to 100 saved post links and 20 provider media pages are supported; unmatched links are counted rather than guessed.
