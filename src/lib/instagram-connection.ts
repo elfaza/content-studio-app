@@ -324,9 +324,15 @@ export async function finishInstagram(
       }),
     )
     .parse(accounts.data);
-  if (rows.length !== 1 || accounts.paging?.next)
+  if (rows.length === 0)
     throw new InstagramError(
-      "Select exactly one Instagram account when connecting, then try again.",
+      "Meta approved authorization, but its API returned no assigned Instagram accounts. Your account selection may be correct. Check Instagram asset access in the selected business portfolio and the app's testing roles before reconnecting. No new connection was saved. Reference: IG_NO_ASSIGNED_ACCOUNT.",
+      428,
+      true,
+    );
+  if (rows.length > 1 || accounts.paging?.next)
+    throw new InstagramError(
+      "Meta returned more than one assigned Instagram account. Select exactly one Instagram account when connecting, then try again. No new connection was saved. Reference: IG_MULTIPLE_ASSIGNED_ACCOUNTS.",
       428,
       true,
     );

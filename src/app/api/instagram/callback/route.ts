@@ -45,14 +45,27 @@ export async function GET(req: NextRequest) {
       ),
     );
   } catch (error) {
+    const message = (
+      error instanceof InstagramError
+        ? error.message
+        : "Instagram connection could not be completed. Return to Settings and reconnect."
+    ).replace(
+      /[&<>"']/g,
+      (character) =>
+        ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        })[character]!,
+    );
     return clear(
       new NextResponse(
-        error instanceof InstagramError
-          ? error.message
-          : "Instagram connection could not be completed. Return to Settings and reconnect.",
+        `<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Instagram connection incomplete</title></head><body><main><h1>Instagram connection is incomplete.</h1><p>${message}</p><p>Authorization does not change your spreadsheet or performance history.</p><a href="/settings">Return to Settings</a></main></body></html>`,
         {
           status: error instanceof InstagramError ? error.status : 503,
-          headers: { ...headers, "Content-Type": "text/plain; charset=utf-8" },
+          headers: { ...headers, "Content-Type": "text/html; charset=utf-8" },
         },
       ),
     );

@@ -207,7 +207,7 @@ it("uses ETag replacement so an older callback cannot overwrite a newer connecti
   );
   expect((await readInstagramCredential())?.username).toBe("creator");
 });
-it("refuses zero or multiple assigned Instagram accounts", async () => {
+it("refuses multiple assigned Instagram accounts", async () => {
   const { state } = await attempt();
   m.fetch.mockImplementation(async (url: URL | string) =>
     String(url).includes("oauth/access_token")
@@ -221,6 +221,33 @@ it("refuses zero or multiple assigned Instagram accounts", async () => {
   );
   await expect(finishInstagram("code", state)).rejects.toThrow("exactly one");
   expect(await readInstagramCredential()).toBeNull();
+});
+it("distinguishes an empty API assignment from multiple selections and preserves a previous connection", async () => {
+  await connected();
+  const previous = await readInstagramCredential();
+  const { state, flow } = await attempt();
+  m.cookies.set("cs-instagram-state", flow.cookie);
+  m.fetch.mockImplementation(async (url: URL | string) =>
+    String(url).includes("oauth/access_token")
+      ? json({ access_token: "new-private-access-token" })
+      : json({ data: [] }),
+  );
+  const response = await callback(
+    new NextRequest(
+      `https://studio.example.com/api/instagram/callback?code=private-code&state=${state.state}`,
+    ),
+  );
+  expect(response.status).toBe(428);
+  expect(response.headers.get("cache-control")).toContain("no-store");
+  const html = await response.text();
+  expect(html).toContain("IG_NO_ASSIGNED_ACCOUNT");
+  expect(html).toContain('href="/settings"');
+  expect(html).not.toContain("Select exactly one");
+  expect(html).not.toContain("new-private-access-token");
+  expect(html).not.toContain("private-code");
+  expect(await readInstagramCredential()).toEqual(previous);
+  expect(m.cookies.get("cs-instagram-state")).toBe(flow.cookie);
+  await expect(finishInstagram("code", state)).rejects.toThrow();
 });
 it("protects connection/status routes and requires a same-origin POST", async () => {
   expect((await status()).status).toBe(401);
