@@ -2,9 +2,9 @@
   "provider": "vercel",
   "projectId": "prj_oag1EA0yrpc66mJC55AG4iyvo9l7",
   "teamId": "team_hSmf5K3G7vMTH3seqMHKaM56",
-  "deploymentId": "dpl_GvGUjWA3Hz1PX8gjgg4meDrGLkSd",
+  "deploymentId": "dpl_61jMv4MapFwqCiqzsbhHjuFGsaDF",
   "url": "https://content-studio-xi-peach.vercel.app",
-  "sourceCommit": "c8dfc4a96d718af61e8b84841829f4b5722dc69a",
+  "sourceCommit": "a4706a50d235ef271a3dfb177e0fe724f5b986a6",
   "googleAuthMode": "oauth",
   "credentialStorage": "private encrypted Vercel Blob",
   "blobStoreId": "store_OJffxg5O3i8lNsqi",
@@ -13,8 +13,8 @@
   "legacyFallbackOnConfirmedAbsenceOnly": true,
   "googleConsentRoundTripPending": true,
   "verified": {
-    "unitIntegrationTests": 64,
-    "browserTests": 13,
+    "unitIntegrationTests": 82,
+    "browserTests": 14,
     "privateBlobAtomicWrites": true,
     "privateBlobConsistentReads": true,
     "productionBuild": true,
@@ -32,11 +32,21 @@
     "snapshotCorrectionAudit": true,
     "snapshotIdentityAndFormulaGuardsMock": true,
     "productionTrackerPageAvailable": true,
-    "liveSnapshotCorrectionPending": true
+    "liveSnapshotCorrectionPending": true,
+    "instagramMockOAuthAndStorage": true,
+    "instagramAtomicSyncMock": true,
+    "instagramProtectedProductionEndpoints": true,
+    "instagramInvalidCallbackRejected": true,
+    "instagramRealAccountRead": false,
+    "instagramVerificationScope": "Provider/Blob mocks and Google API mocks; browser setup and manual-only action; live unauthenticated route protections. App Secret setup, registered Meta redirect, creator consent and first live read remain pending."
   },
   "spreadsheetWritesDuringVerification": 0,
   "cancelIdeasWithReasons": true,
   "platformSpecificDurationAndAnalytics": true,
   "editablePerformanceTracker": true,
-  "exactPlatformOnlySnapshotRecovery": true
+  "exactPlatformOnlySnapshotRecovery": true,
+  "instagramManualSync": true,
+  "instagramScheduledSync": false,
+  "instagramSecretSetupPending": true,
+  "instagramMetaConsentPending": true
 }
