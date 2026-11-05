@@ -2,9 +2,9 @@
   "provider": "vercel",
   "projectId": "prj_oag1EA0yrpc66mJC55AG4iyvo9l7",
   "teamId": "team_hSmf5K3G7vMTH3seqMHKaM56",
-  "deploymentId": "dpl_B25QW3pfzdM3yQtY97HMj3aJ3y1d",
+  "deploymentId": "dpl_GvGUjWA3Hz1PX8gjgg4meDrGLkSd",
   "url": "https://content-studio-xi-peach.vercel.app",
-  "sourceCommit": "788bbe40272220e25bcd20ededb244b553ba9b69",
+  "sourceCommit": "c8dfc4a96d718af61e8b84841829f4b5722dc69a",
   "googleAuthMode": "oauth",
   "credentialStorage": "private encrypted Vercel Blob",
   "blobStoreId": "store_OJffxg5O3i8lNsqi",
@@ -13,8 +13,8 @@
   "legacyFallbackOnConfirmedAbsenceOnly": true,
   "googleConsentRoundTripPending": true,
   "verified": {
-    "unitIntegrationTests": 60,
-    "browserTests": 12,
+    "unitIntegrationTests": 64,
+    "browserTests": 13,
     "privateBlobAtomicWrites": true,
     "privateBlobConsistentReads": true,
     "productionBuild": true,
@@ -27,9 +27,16 @@
     "platformDurationPersistence": true,
     "originalDurationFormulaPreservedMock": true,
     "platformCardMobileVisualReview": true,
-    "platformVerificationScope": "Demo browser and local persistence plus mocked Google API; no real spreadsheet writes"
+    "platformVerificationScope": "Demo browser and local persistence plus mocked Google API; no real spreadsheet writes",
+    "trackerVerification": "12 existing browser regressions passed; targeted new tracker flow passed twice including final mobile spacing",
+    "snapshotCorrectionAudit": true,
+    "snapshotIdentityAndFormulaGuardsMock": true,
+    "productionTrackerPageAvailable": true,
+    "liveSnapshotCorrectionPending": true
   },
   "spreadsheetWritesDuringVerification": 0,
   "cancelIdeasWithReasons": true,
-  "platformSpecificDurationAndAnalytics": true
+  "platformSpecificDurationAndAnalytics": true,
+  "editablePerformanceTracker": true,
+  "exactPlatformOnlySnapshotRecovery": true
 }
