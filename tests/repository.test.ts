@@ -174,7 +174,7 @@ describe("Repository mutations and conflicts", () => {
       save("ideas", { ...item, status: "Published" }),
     ).resolves.toMatchObject({ status: "Published" });
   });
-  it("creates snapshots once and never overwrites history", async () => {
+  it("corrects snapshots explicitly while retaining their previous values", async () => {
     const d = await readDataset();
     const input = {
       videoId: d.videos[0].id,
@@ -185,13 +185,33 @@ describe("Repository mutations and conflicts", () => {
     };
     const first = await save("snapshots", input);
     await expect(save("snapshots", input)).rejects.toThrow("already exists");
-    await expect(save("snapshots", { ...first, views: "5" })).rejects.toThrow(
-      "append-only",
+    const corrected = await save("snapshots", {
+      ...first,
+      views: "5",
+      platform: "TikTok",
+      date: "2025-01-03",
+    });
+    expect(corrected.id).toBe(first.id);
+    expect(JSON.parse(corrected.correctionHistory)[0].before).toMatchObject({
+      views: "0",
+      platform: "Instagram",
+      date: "2025-01-01",
+    });
+    await expect(save("snapshots", { ...first, views: "6" })).rejects.toThrow(
+      "changed since",
     );
+    await save("snapshots", input);
+    await expect(
+      save("snapshots", {
+        ...corrected,
+        platform: "Instagram",
+        date: "2025-01-01",
+      }),
+    ).rejects.toThrow("already exists");
     await save("snapshots", { ...input, date: "2025-01-02", views: "50" });
     expect(
       (await readDataset()).snapshots.find((s) => s.id === first.id)?.views,
-    ).toBe("0");
+    ).toBe("5");
   });
   it("rejects missing links and duplicate plans, and supports rescheduling", async () => {
     await expect(

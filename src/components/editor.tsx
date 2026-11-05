@@ -500,8 +500,8 @@ export default function Editor({
             {field("date", "Observation date · WIB", undefined, "date")}
             <p className="form-note full">
               Blank means unknown. Enter 0 only for a measured zero. One
-              snapshot per video, platform, and date; saved observations are
-              append-only.
+              snapshot per video, platform, and date. Corrections preserve the
+              record ID and keep previous values in correction history.
             </p>
             {metricKeys.map((k) =>
               field(

@@ -56,6 +56,7 @@ import {
 } from "@/lib/domain";
 import { platformPerformance, averageWatchedPercent } from "@/lib/performance";
 import { PublishedPlatforms, ObservationHistory } from "./published-platforms";
+import { PerformanceTracker } from "./performance-tracker";
 import { Dialog } from "./ui/dialog";
 import Editor from "./editor";
 import { CancelIdeaDialog } from "./cancel-idea-dialog";
@@ -67,6 +68,7 @@ const pages = [
   { slug: "ideas", name: "Idea library", icon: Lightbulb },
   { slug: "published", name: "Published content", icon: Clapperboard },
   { slug: "analytics", name: "Analytics", icon: BarChart3 },
+  { slug: "performance", name: "Performance tracker", icon: TrendingUp },
   { slug: "settings", name: "Settings", icon: Settings },
 ];
 const fmt = (n: number | null, digits = 0) =>
@@ -658,23 +660,25 @@ export default function Studio() {
         </button>
         <p className="sidebar-label">YOUR WORKSPACE</p>
         <nav>
-          {pages.slice(0, 6).map((p) => (
-            <Link
-              className={path === p.slug ? "active" : ""}
-              aria-current={path === p.slug ? "page" : undefined}
-              href={"/" + p.slug}
-              key={p.slug}
-            >
-              <p.icon size={18} />
-              <span>{p.name}</span>
-              {p.slug === "ideas" && (
-                <small>
-                  {dataset?.ideas.filter((i) => i.archived !== "true").length ??
-                    "—"}
-                </small>
-              )}
-            </Link>
-          ))}
+          {pages
+            .filter((p) => p.slug !== "settings")
+            .map((p) => (
+              <Link
+                className={path === p.slug ? "active" : ""}
+                aria-current={path === p.slug ? "page" : undefined}
+                href={"/" + p.slug}
+                key={p.slug}
+              >
+                <p.icon size={18} />
+                <span>{p.name}</span>
+                {p.slug === "ideas" && (
+                  <small>
+                    {dataset?.ideas.filter((i) => i.archived !== "true")
+                      .length ?? "—"}
+                  </small>
+                )}
+              </Link>
+            ))}
         </nav>
         <div className="sidebar-note">
           <span className="note-spark">
@@ -788,6 +792,7 @@ export default function Studio() {
                     calendar: "Publishing calendar",
                     published: "Published content",
                     analytics: "Performance overview",
+                    performance: "Performance tracker",
                     settings: "Workspace settings",
                   } as Record<string, string>
                 )[path] || "A little more intentional."}
@@ -809,6 +814,8 @@ export default function Studio() {
                         "A growing collection of stories you’ve shared.",
                       analytics:
                         "Understand what resonates. Let real observations guide your next story.",
+                      performance:
+                        "Review observations by date and correct the details in one place.",
                       settings: "Your workspace, connected and considered.",
                     } as Record<string, string>
                   )[path]
@@ -913,6 +920,12 @@ export default function Studio() {
                       </h2>
                       {rangeControl}
                     </div>
+                    <p>
+                      <Link href="/performance" className="text-link">
+                        View and edit all observations{" "}
+                        <ArrowUpRight size={14} />
+                      </Link>
+                    </p>
                     {analyticsPlatformControl}
                     <div className="stats-grid">
                       <Stat
@@ -1686,6 +1699,14 @@ export default function Studio() {
                               <ObservationHistory
                                 videoId={v.id}
                                 snapshots={dataset.snapshots}
+                                writable={canWrite}
+                                onEdit={(record) =>
+                                  setEditing({
+                                    entity: "snapshots",
+                                    record,
+                                    title: "Edit performance observation",
+                                  })
+                                }
                               />
                             </div>
                           </article>
@@ -1696,6 +1717,26 @@ export default function Studio() {
                       )}
                     </div>
                   </>
+                )}
+                {path === "performance" && (
+                  <PerformanceTracker
+                    snapshots={dataset.snapshots}
+                    videos={dataset.videos}
+                    writable={canWrite}
+                    onAdd={() =>
+                      setEditing({
+                        entity: "snapshots",
+                        title: "Record performance",
+                      })
+                    }
+                    onEdit={(record) =>
+                      setEditing({
+                        entity: "snapshots",
+                        record,
+                        title: "Edit performance observation",
+                      })
+                    }
+                  />
                 )}
                 {path === "analytics" && (
                   <>
@@ -2242,6 +2283,11 @@ export default function Studio() {
             key={
               editing.entity +
               (editing.record?.id ?? JSON.stringify(editing.record))
+            }
+            saveLabel={
+              editing.entity === "snapshots" && editing.record?.id
+                ? "Save correction"
+                : "Save changes"
             }
             entity={editing.entity}
             record={editing.record}

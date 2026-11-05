@@ -97,9 +97,13 @@ export function PublishedPlatforms({
 export function ObservationHistory({
   videoId,
   snapshots,
+  writable,
+  onEdit,
 }: {
   videoId: string;
   snapshots: RecordData[];
+  writable?: boolean;
+  onEdit?: (row: RecordData) => void;
 }) {
   const [platform, setPlatform] = useState("All platforms");
   const rows = snapshots
@@ -134,6 +138,16 @@ export function ObservationHistory({
             {dateLabel(s.date)} · {s.platform}
           </span>
           <strong>{format(number(s.views))} views</strong>
+          {onEdit && (
+            <button
+              className="text-link"
+              disabled={!writable}
+              onClick={() => onEdit(s)}
+              aria-label={"Edit " + s.platform + " observation " + s.date}
+            >
+              Edit
+            </button>
+          )}
         </div>
       ))}
       {!rows.length && (

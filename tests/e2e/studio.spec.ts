@@ -121,6 +121,7 @@ test("all workspace pages render on desktop and mobile", async ({ page }) => {
     "calendar",
     "published",
     "analytics",
+    "performance",
     "settings",
   ]) {
     await page.goto("/" + path);
@@ -140,6 +141,7 @@ test("all workspace pages render on desktop and mobile", async ({ page }) => {
     "calendar",
     "published",
     "analytics",
+    "performance",
     "settings",
   ]) {
     await page.goto("/" + path);
@@ -434,4 +436,51 @@ test('platform versions stay in one card and analytics never mix platforms', asy
   await tabs.getByRole('button',{name:'Instagram',exact:true}).click();
   await expect(page.locator('.analytics-table tbody tr')).toHaveCount(1);
   await expect(page.locator('.analytics-table tbody tr')).toContainText('3,779');
+});
+
+
+test('performance tracker filters by date and saves explicit corrections with stable IDs', async ({page}) => {
+  test.setTimeout(120000);
+  await page.goto('/performance');
+  await expect.poll(async()=> (await page.request.post('/api/session',{headers:{Origin:new URL(page.url()).origin},data:{password:process.env.E2E_PASSWORD || 'content-studio-local-2026'}})).status(),{timeout:70000,intervals:[10000]}).toBe(200);
+  await page.reload();
+  await expect(page.getByRole('heading',{name:'Performance tracker',exact:true})).toBeVisible();
+  expect((await (await page.request.get('/api/studio')).json()).mode).toBe('demo');
+  await page.getByRole('button',{name:'Add observation',exact:true}).click();
+  await page.getByRole('combobox',{name:'Published video',exact:true}).selectOption({index:1});
+  await page.getByRole('combobox',{name:'Platform',exact:true}).selectOption('Instagram');
+  await page.getByLabel('Observation date · WIB',{exact:true}).fill('2001-01-01');
+  await page.getByLabel('Views',{exact:true}).fill('0');
+  await page.getByRole('button',{name:'Save changes',exact:true}).click();
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await page.getByLabel('Observed from',{exact:true}).fill('2001-01-01');
+  await page.getByLabel('Observed until',{exact:true}).fill('2001-01-03');
+  const row=page.locator('.tracker-row');await expect(row).toHaveCount(1);await expect(row).toContainText('Instagram');
+  const before=await page.evaluate(()=>JSON.parse(localStorage.getItem('cs-hosted-demo')!).snapshots.find((s:{date:string})=>s.date==='2001-01-01'));
+  let writes=0;page.on('request',r=>{if(r.url().endsWith('/api/studio')&&r.method()==='POST')writes++});
+  await row.getByRole('button',{name:'Edit observation:',exact:false}).click();
+  await expect(page.getByLabel('Views',{exact:true})).toHaveValue('0');
+  await page.getByRole('button',{name:'Close dialog',exact:true}).click();expect(writes).toBe(0);
+  await row.getByRole('button',{name:'Edit observation:',exact:false}).click();
+  await page.getByRole('combobox',{name:'Platform',exact:true}).selectOption('TikTok');
+  await page.getByLabel('Observation date · WIB',{exact:true}).fill('2001-01-02');
+  await page.getByLabel('Views',{exact:true}).fill('245');
+  await page.getByRole('button',{name:'Save correction',exact:true}).click();
+  await expect(page.getByRole('dialog')).not.toBeVisible();expect(writes).toBe(1);
+  await expect(row).toContainText('TikTok');await expect(row).toContainText('2001-01-02');await expect(row).toContainText('245');
+  await row.getByText('Correction history (1)',{exact:true}).click();await expect(row).toContainText('2001-01-01');await expect(row).toContainText('Instagram');
+  await page.getByRole('combobox',{name:'Tracker platform',exact:true}).selectOption('Instagram');await expect(row).toHaveCount(0);
+  await page.getByRole('combobox',{name:'Tracker platform',exact:true}).selectOption('TikTok');await expect(row).toHaveCount(1);
+  await page.reload();await page.getByLabel('Observed from',{exact:true}).fill('2001-01-02');await page.getByLabel('Observed until',{exact:true}).fill('2001-01-02');await expect(row).toHaveCount(1);
+  const after=await page.evaluate(()=>JSON.parse(localStorage.getItem('cs-hosted-demo')!).snapshots.find((s:{date:string})=>s.date==='2001-01-02'));
+  expect(after.id).toBe(before.id);expect(after.platform).toBe('TikTok');expect(JSON.parse(after.correctionHistory)[0].before.views).toBe('0');
+  await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+  await page.screenshot({path:'test-results/performance-tracker-mobile.png',fullPage:true});
+  await page.goto('/published');
+  await page.getByLabel('Search content').fill(after.title);
+  const published=page.locator('.published-card').filter({has:page.getByRole('heading',{name:after.title,exact:true})});
+  await published.locator('summary').click();
+  await published.getByRole('button',{name:'Edit TikTok observation 2001-01-02',exact:true}).click();
+  await expect(page.getByLabel('Views',{exact:true})).toHaveValue('245');
+  await page.getByRole('button',{name:'Close dialog',exact:true}).click();expect(writes).toBe(1);
 });

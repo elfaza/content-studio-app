@@ -127,6 +127,101 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 describe("Official Google adapter preservation", () => {
+  function registeredSnapshot() {
+    const row = makeRow(snapshotFields, {
+      videoId: "VID-001",
+      title: "Published story",
+      platform: "Instagram",
+      date: "2026-11-01",
+      views: "100",
+      likes: "5",
+    });
+    while (row.at(-1) === "") row.pop();
+    tabs["Performance Tracker"].rows = [row];
+    tabs["CS_Metadata"] = {
+      id: 4,
+      headers: ["id", "entity", "fingerprint", "anchor", "extras"],
+      rows: [
+        [
+          "stable-snapshot",
+          "snapshots",
+          createHash("sha256").update(JSON.stringify(row)).digest("hex"),
+          createHash("sha256")
+            .update(JSON.stringify(["VID-001", "Instagram", "2026-11-01"]))
+            .digest("hex"),
+          "{}",
+        ],
+      ],
+    };
+    return row;
+  }
+  it("recovers only an exact platform-only external correction without writing on reads", async () => {
+    const raw = registeredSnapshot();
+    const old = (await readDataset()).snapshots[0];
+    raw[Object.values(snapshotFields).indexOf("platform")] = "TikTok";
+    const corrected = await readDataset();
+    expect(corrected.writable).toBe(true);
+    expect(corrected.warnings).toEqual([]);
+    expect(corrected.snapshots[0]).toMatchObject({
+      id: old.id,
+      platform: "TikTok",
+      views: "100",
+    });
+    expect(corrected.snapshots[0].version).not.toBe(old.version);
+    expect(mock.batchUpdate).not.toHaveBeenCalled();
+    await expect(save("snapshots", { ...old, views: "101" })).rejects.toThrow(
+      "changed since",
+    );
+  });
+  it("blocks recovery when more than the platform cell changed", async () => {
+    const raw = registeredSnapshot();
+    raw[Object.values(snapshotFields).indexOf("platform")] = "TikTok";
+    raw[Object.values(snapshotFields).indexOf("views")] = "101";
+    const d = await readDataset();
+    expect(d.writable).toBe(false);
+    expect(d.warnings.join()).toContain("Unresolved sidecar");
+    expect(mock.batchUpdate).not.toHaveBeenCalled();
+  });
+  it("atomically corrects date/platform/metrics and updates the existing metadata identity with an audit copy", async () => {
+    registeredSnapshot();
+    const row = (await readDataset()).snapshots[0];
+    await save("snapshots", {
+      ...row,
+      platform: "TikTok",
+      date: "2026-11-02",
+      views: "245",
+    });
+    const requests = contentRequests();
+    const changes = requests.filter(
+      (r: { updateCells?: { range: { sheetId: number } } }) =>
+        r.updateCells?.range.sheetId === 3,
+    );
+    expect(changes).toHaveLength(3);
+    expect(JSON.stringify(requests)).toContain("correctionHistory");
+    expect(JSON.stringify(requests)).toContain(
+      createHash("sha256")
+        .update(JSON.stringify(["VID-001", "TikTok", "2026-11-02"]))
+        .digest("hex"),
+    );
+    expect(requests.some((r: { deleteSheet?: unknown }) => r.deleteSheet)).toBe(
+      true,
+    );
+    expect(mock.batchUpdate).toHaveBeenCalledTimes(2);
+  });
+  it("does not overwrite a snapshot formula during correction", async () => {
+    registeredSnapshot()[Object.values(snapshotFields).indexOf("views")] =
+      "=400+77";
+    // Keep metadata aligned with the formula-bearing row.
+    const row = tabs["Performance Tracker"].rows[0];
+    tabs["CS_Metadata"].rows[0][2] = createHash("sha256")
+      .update(JSON.stringify(row))
+      .digest("hex");
+    const snapshot = (await readDataset()).snapshots[0];
+    await expect(
+      save("snapshots", { ...snapshot, views: "200" }),
+    ).rejects.toThrow("formula");
+    expect(contentRequests()).toEqual([]);
+  });
   it("stores platform durations in metadata without rewriting the original duration, formulas, or snapshots", async () => {
     const column = Object.values(videoFields).indexOf("duration");
     tabs["Published Content"].rows[0][column] = "=400+77";

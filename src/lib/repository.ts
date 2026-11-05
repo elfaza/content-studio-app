@@ -15,6 +15,7 @@ import {
   validate,
   stage,
   cancelIdeaSchedules,
+  platforms,
 } from "./domain";
 import { demoData } from "./demo";
 import { z } from "zod";
@@ -245,6 +246,31 @@ async function inspect(): Promise<Inspection> {
       const candidates = metadataRows.filter(
         (m) => m.entity === entity && (m.fingerprint === fp || m.anchor === a),
       );
+      // Recover only a provable single-cell platform correction made in Sheets.
+      // Both the complete previous raw row and its identity must match; never
+      // infer identity from position, title, or a partial metric match.
+      if (entity === "snapshots" && !candidates.length) {
+        const column = grid.headers.indexOf("Platform");
+        if (
+          column >= 0 &&
+          platforms.includes(mapped.platform as (typeof platforms)[number])
+        ) {
+          for (const previous of platforms) {
+            if (previous === mapped.platform) continue;
+            const oldRow = [...formulaRow];
+            oldRow[column] = previous;
+            candidates.push(
+              ...metadataRows.filter(
+                (m) =>
+                  m.entity === entity &&
+                  m.fingerprint === rowHash(oldRow) &&
+                  m.anchor ===
+                    anchor(entity, { ...mapped, platform: previous }),
+              ),
+            );
+          }
+        }
+      }
       if (candidates.length > 1)
         throw new AppError(
           "Ambiguous identifier mapping. Resolve duplicated records before writing.",
@@ -343,19 +369,18 @@ export async function save(
         "This record changed since you opened it. Refresh and review the latest version.",
         409,
       );
-    if (entity === "snapshots" && existing)
-      throw new AppError("Historical snapshots are append-only.", 409);
     if (
       entity === "snapshots" &&
       dataset.snapshots.some(
         (s) =>
+          s.id !== data.id &&
           s.videoId === data.videoId &&
           s.platform === data.platform &&
           s.date === data.date,
       )
     )
       throw new AppError(
-        "A snapshot already exists for this video, platform, and date. Historical observations are not overwritten.",
+        "A snapshot already exists for this video, platform, and date. Edit that observation or choose another date.",
         409,
       );
     if (
@@ -417,6 +442,36 @@ export async function save(
       id,
       version: hash(data),
     } as RecordData;
+    if (entity === "snapshots" && existing) {
+      const before = Object.fromEntries(
+        Object.entries(existing).filter(
+          ([key]) => !["correctionHistory", "version"].includes(key),
+        ),
+      );
+      let history: unknown;
+      try {
+        history = JSON.parse(existing.correctionHistory || "[]");
+      } catch {
+        throw new AppError(
+          "Correction history is invalid. Review metadata before editing.",
+          409,
+        );
+      }
+      if (!Array.isArray(history))
+        throw new AppError(
+          "Correction history is invalid. Review metadata before editing.",
+          409,
+        );
+      record.correctionHistory = JSON.stringify([
+        ...history,
+        { at: new Date().toISOString(), before },
+      ]);
+      if (JSON.stringify(record.correctionHistory).length > 40000)
+        throw new AppError(
+          "This observation's correction history is full. No changes were saved.",
+          409,
+        );
+    }
     const cancelling =
       entity === "ideas" && stage(record.status) === "Cancelled";
     if (cancelling && (!existing || stage(existing.status) !== "Cancelled")) {
