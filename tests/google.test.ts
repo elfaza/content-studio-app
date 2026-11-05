@@ -31,6 +31,7 @@ import {
   readDataset,
   save,
   saveInstagramObservations,
+  saveTikTokObservations,
 } from "../src/lib/repository";
 type Tab = { id: number; headers: string[]; rows: unknown[][] };
 let tabs: Record<string, Tab>;
@@ -136,6 +137,85 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 describe("Official Google adapter preservation", () => {
+  it("refreshes only today's TikTok metrics with history and preserves Instagram, watch values and unavailable saves", async () => {
+    tabs["Published Content"].rows[0] = makeRow(videoFields, {
+      id: "VID-001",
+      title: "Published story",
+      igUrl: "https://instagram.com/reel/test/",
+      tiktokUrl: "https://www.tiktok.com/@creator/video/1234567890123456789",
+      tiktokDuration: "30",
+    });
+    tabs["Performance Tracker"].rows = [
+      makeRow(snapshotFields, {
+        videoId: "VID-001",
+        title: "Manual",
+        platform: "TikTok",
+        date: today(),
+        views: "100",
+        likes: "7",
+        saves: "22",
+        avgWatch: "11",
+        watchedFull: "40",
+      }),
+      makeRow(snapshotFields, {
+        videoId: "VID-001",
+        platform: "Instagram",
+        date: today(),
+        views: "1936",
+      }),
+      makeRow(snapshotFields, {
+        videoId: "VID-001",
+        platform: "TikTok",
+        date: "2025-01-01",
+        views: "90",
+      }),
+    ];
+    const dataset = await readDataset(),
+      video = dataset.videos[0],
+      snapshot = dataset.snapshots[0];
+    const input = {
+      videoId: video.id,
+      videoVersion: video.version,
+      tiktokUrl: video.tiktokUrl,
+      date: today(),
+      fetchedAt: Date.now(),
+      snapshotVersion: snapshot.version,
+      metrics: {
+        views: "500",
+        likes: "0",
+        shares: "3",
+        saves: "999",
+        avgWatch: "999",
+      },
+    };
+    expect(await saveTikTokObservations([input])).toMatchObject({
+      updated: 1,
+      manualUpdated: 1,
+      added: 0,
+    });
+    const requests = contentRequests();
+    const allowed = (["views", "likes", "shares", "source"] as const).map((k) =>
+      Object.values(snapshotFields).indexOf(k),
+    );
+    for (const r of requests.filter(
+      (r: { updateCells?: { range?: { sheetId: number } } }) =>
+        r.updateCells?.range?.sheetId === 3,
+    )) {
+      expect(r.updateCells.range.startRowIndex).toBe(1);
+      expect(allowed).toContain(r.updateCells.range.startColumnIndex);
+    }
+    const encoded = JSON.stringify(requests);
+    expect(encoded).toContain("correctionHistory");
+    expect(encoded).toContain("tiktokFetchedAt");
+    expect(encoded).not.toContain("instagramFetchedAt");
+    expect(encoded).not.toContain("999");
+    mock.batchUpdate.mockClear();
+    input.snapshotVersion = "stale";
+    await expect(saveTikTokObservations([input])).rejects.toThrow(
+      "observation changed",
+    );
+    expect(contentRequests()).toEqual([]);
+  });
   async function instagramInput() {
     const dataset = await readDataset();
     const video = dataset.videos[0];

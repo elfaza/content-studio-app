@@ -103,7 +103,9 @@ Unit/integration tests use isolated temporary demo files and mock Google APIs; t
 
 ## Platform versions and performance
 
-Instagram can be connected from Settings through Facebook Login for Business. **Sync Instagram** runs only when clicked, matches the saved Instagram post links, and stores available cumulative views, likes, comments, shares, and saves for today's Jakarta date. Manual snapshots and corrections take priority; only sync-owned snapshots are refreshed, with correction history preserved. TikTok and YouTube are unchanged. Setup, security, supported metrics, and live-verification limitations are documented in [docs/INSTAGRAM-SYNC.md](docs/INSTAGRAM-SYNC.md).
+Instagram can be connected from Settings through Facebook Login for Business or a configured first-party System User. **Sync Instagram** runs only when clicked, matches saved Instagram links, and stores available cumulative views, likes, comments, shares and saves for today's Jakarta date. Today's manual snapshots can be refreshed with correction history preserved; watch metrics, duration and other platforms are unchanged. See [docs/INSTAGRAM-SYNC.md](docs/INSTAGRAM-SYNC.md).
+
+TikTok uses direct Web Login Kit and Display API with encrypted server-side token storage and automatic token refresh when needed. **Sync TikTok** explicitly updates available views, likes, comments and shares for today's TikTok snapshot, preserving previous values in correction history and keeping Instagram separate. Setup, Sandbox requirements, short-link safety and verification boundaries are documented in [docs/TIKTOK-SYNC.md](docs/TIKTOK-SYNC.md). Public `/terms` and `/privacy` pages describe this private workspace; `/icon-1024.png` provides its developer-portal icon.
 
 One published content card contains separate Instagram, TikTok, and YouTube performance sections. Edit published post links to enter each platform version's actual duration. The idea's target duration remains a production planning value. Old shared durations are preserved and are not treated as actual durations for every platform. Missing values display as unknown.
 

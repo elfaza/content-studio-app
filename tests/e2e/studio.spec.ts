@@ -5,6 +5,9 @@ test("authentication protects private API", async ({ request }) => {
   expect((await request.get('/api/google')).status()).toBe(401);
   expect((await request.get('/api/instagram')).status()).toBe(401);
   expect((await request.post('/api/instagram/sync')).status()).toBe(401);
+  expect((await request.get('/api/tiktok')).status()).toBe(401);
+  expect((await request.post('/api/tiktok')).status()).toBe(401);
+  expect((await request.post('/api/tiktok/sync')).status()).toBe(401);
 });
 
 test('Google connection shows an actionable setup message when OAuth is unconfigured',async({page})=>{
@@ -539,4 +542,42 @@ test('System User validation stays in Settings and enables explicit sync', async
   await (await refreshed).finished();
   await expect(panel.getByRole('status')).toContainText('1 manual observations refreshed; previous values kept in correction history');
   expect(syncs).toBe(1);
+});
+
+test('TikTok sync is explicit, separate from Instagram and refreshes the workspace', async ({page}) => {
+  test.setTimeout(120000);
+  let syncs=0;
+  await page.route('**/api/studio', async route => {
+    if(route.request().method()!=='GET') throw Error('Unexpected workspace write');
+    const response=await route.fetch(), dataset=await response.json();
+    await route.fulfill({json:{...dataset,mode:'live',writable:true}});
+  });
+  await page.route('**/api/tiktok', route=>route.fulfill({json:{configured:true,connected:true,displayName:'TikTok Creator',expiresAt:Date.now()+86400000}}));
+  await page.route('**/api/tiktok/sync', async route=>{
+    syncs++;
+    await route.fulfill({json:{added:0,updated:1,unchanged:0,manualUpdated:1,unmatched:[]}});
+  });
+  await page.goto('/settings');
+  await expect.poll(async()=> (await page.request.post('/api/session',{headers:{Origin:new URL(page.url()).origin},data:{password:process.env.E2E_PASSWORD || 'content-studio-local-2026'}})).status(),{timeout:70000,intervals:[10000]}).toBe(200);
+  await page.reload();
+  const panel=page.locator('.tiktok-settings');
+  await expect(panel.getByText('Connected to TikTok Creator.',{exact:true})).toBeVisible({timeout:20000});
+  expect(syncs).toBe(0);
+  const refreshed=page.waitForResponse(r=>r.url().endsWith('/api/studio')&&r.request().method()==='GET');
+  await panel.getByRole('button',{name:'Sync TikTok',exact:true}).click();
+  await (await refreshed).finished();
+  await expect(panel.getByRole('status')).toContainText('1 manual observations refreshed');
+  await expect(page.locator('.instagram-settings').getByRole('heading',{name:'Instagram insights'})).toBeVisible();
+  expect(syncs).toBe(1);
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+  await panel.screenshot({path:'test-results/tiktok-settings-mobile.png'});
+});
+
+test('public policy pages are readable without exposing the workspace', async ({page, request}) => {
+  await page.goto('/privacy');
+  await expect(page.getByRole('heading',{name:'Privacy policy',exact:true})).toBeVisible();
+  await page.goto('/terms');
+  await expect(page.getByRole('heading',{name:'Terms of service',exact:true})).toBeVisible();
+  expect((await request.get('/api/studio')).status()).toBe(401);
 });

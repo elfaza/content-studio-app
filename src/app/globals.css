@@ -3233,11 +3233,23 @@ select:not([multiple]):not([size]) {
     gap: 8px;
   }
 }
-.instagram-settings > .button-group {
+.instagram-settings > .button-group,
+.tiktok-settings > .button-group {
   margin: 18px 22px;
 }
-.instagram-settings .panel-heading h2 {
+.instagram-settings .panel-heading h2,
+.tiktok-settings .panel-heading h2 {
   display: flex;
   align-items: center;
   gap: 8px;
 }
+.legal-document {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 48px 24px;
+  line-height: 1.75;
+}
+.legal-document h1 { margin: 16px 0; }
+.legal-document h2 { margin: 32px 0 12px; }
+.legal-document p { margin-bottom: 16px; }
+.legal-document nav { margin-top: 36px; }

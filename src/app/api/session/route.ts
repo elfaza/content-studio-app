@@ -68,5 +68,6 @@ export async function DELETE(req: NextRequest) {
     path: "/api/instagram",
     maxAge: 0,
   });
+  res.cookies.set("cs-tiktok-state", "", { path: "/api/tiktok", maxAge: 0 });
   return res;
 }

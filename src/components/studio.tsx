@@ -57,6 +57,7 @@ import {
 import { platformPerformance, averageWatchedPercent } from "@/lib/performance";
 import { PublishedPlatforms, ObservationHistory } from "./published-platforms";
 import { InstagramSettings } from "./instagram-settings";
+import { TikTokSettings } from "./tiktok-settings";
 import { PerformanceTracker } from "./performance-tracker";
 import { Dialog } from "./ui/dialog";
 import Editor from "./editor";
@@ -2142,6 +2143,11 @@ export default function Studio() {
                     </section>
                     <div>
                       <InstagramSettings
+                        online={online}
+                        writable={canWrite && dataset.mode === "live"}
+                        onSynced={() => mutate()}
+                      />
+                      <TikTokSettings
                         online={online}
                         writable={canWrite && dataset.mode === "live"}
                         onSynced={() => mutate()}

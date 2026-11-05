@@ -18,6 +18,7 @@ import {
   platforms,
 } from "./domain";
 import type { InstagramObservation } from "./instagram-graph";
+import type { TikTokObservation } from "./tiktok-api";
 import { today } from "./domain";
 import { demoData } from "./demo";
 import { z } from "zod";
@@ -373,16 +374,34 @@ export async function readDataset() {
 // Provider reads finish before entering this transaction. Only snapshots and
 // their metadata change; post links, durations, ideas, and other platforms do not.
 export async function saveInstagramObservations(input: InstagramObservation[]) {
+  return savePlatformObservations(
+    input.map((item) => ({ ...item, postUrl: item.igUrl })),
+    "instagram",
+  );
+}
+export async function saveTikTokObservations(input: TikTokObservation[]) {
+  return savePlatformObservations(
+    input.map((item) => ({ ...item, postUrl: item.tiktokUrl })),
+    "tiktok",
+  );
+}
+async function savePlatformObservations(
+  input: (Omit<InstagramObservation, "igUrl"> & { postUrl: string })[],
+  provider: "instagram" | "tiktok",
+) {
+  const platform = provider === "instagram" ? "Instagram" : "TikTok";
+  const linkKey = provider === "instagram" ? "igUrl" : "tiktokUrl";
+  const fetchedKey = `${provider}FetchedAt`;
   if (!live() || process.env.GOOGLE_SHEETS_WRITES_ENABLED !== "true")
     throw new AppError(
-      "Connect your writable Google tracker before syncing Instagram.",
+      `Connect your writable Google tracker before syncing ${platform}.`,
       409,
     );
   if (
     input.length > 100 ||
     new Set(input.map((r) => r.videoId)).size !== input.length
   )
-    throw new AppError("Invalid Instagram sync batch.", 409);
+    throw new AppError(`Invalid ${platform} sync batch.`, 409);
   return serialized(async () => {
     const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
     if (!spreadsheetId) throw new AppError("Spreadsheet ID is missing", 503);
@@ -391,7 +410,7 @@ export async function saveInstagramObservations(input: InstagramObservation[]) {
         { dataset } = inspection;
       if (!dataset.writable)
         throw new AppError(
-          "Resolve the spreadsheet warning before syncing Instagram.",
+          `Resolve the spreadsheet warning before syncing ${platform}.`,
           409,
         );
       const grid = inspection.grids.snapshots!;
@@ -405,10 +424,10 @@ export async function saveInstagramObservations(input: InstagramObservation[]) {
         if (
           !video ||
           video.version !== item.videoVersion ||
-          video.igUrl !== item.igUrl
+          video[linkKey] !== item.postUrl
         )
           throw new AppError(
-            "A linked post changed while Instagram was loading. Refresh and sync again.",
+            `A linked post changed while ${platform} was loading. Refresh and sync again.`,
             409,
           );
         if (
@@ -418,23 +437,26 @@ export async function saveInstagramObservations(input: InstagramObservation[]) {
           item.date !== today(new Date(item.fetchedAt))
         )
           throw new AppError(
-            "Instagram statistics expired before saving. Sync again.",
+            `${platform} statistics expired before saving. Sync again.`,
             409,
           );
         const metrics = Object.fromEntries(
-          ["views", "likes", "comments", "shares", "saves"]
+          (provider === "instagram"
+            ? ["views", "likes", "comments", "shares", "saves"]
+            : ["views", "likes", "comments", "shares"]
+          )
             .filter((k) => item.metrics[k] !== undefined)
             .map((k) => [k, item.metrics[k]]),
         );
         const matches = dataset.snapshots.filter(
           (r) =>
             r.videoId === video.id &&
-            r.platform === "Instagram" &&
+            r.platform === platform &&
             r.date === item.date,
         );
         if (matches.length > 1)
           throw new AppError(
-            "Duplicate Instagram observations exist for this date. Correct them before syncing.",
+            `Duplicate ${platform} observations exist for this date. Correct them before syncing.`,
             409,
           );
         const existing = matches[0];
@@ -443,12 +465,12 @@ export async function saveInstagramObservations(input: InstagramObservation[]) {
           (existing?.version ?? null) !== item.snapshotVersion
         )
           throw new AppError(
-            "An Instagram observation changed while statistics were loading. Refresh and sync again.",
+            `An ${platform} observation changed while statistics were loading. Refresh and sync again.`,
             409,
           );
         if (
           existing &&
-          (Number(existing.instagramFetchedAt) >= item.fetchedAt ||
+          (Number(existing[fetchedKey]) >= item.fetchedAt ||
             Object.entries(metrics).every(([k, v]) => existing[k] === v))
         ) {
           summary.unchanged++;
@@ -459,17 +481,17 @@ export async function saveInstagramObservations(input: InstagramObservation[]) {
           ...metrics,
           videoId: video.id,
           title: existing?.title || video.title,
-          platform: "Instagram",
+          platform,
           date: item.date,
-          source: "Instagram API",
+          source: `${platform} API`,
         });
         const id = existing?.id || "snapshots-" + randomUUID();
         const record = {
           ...existing,
           ...data,
           id,
-          automaticProvider: "instagram",
-          instagramFetchedAt: String(item.fetchedAt),
+          automaticProvider: provider,
+          [fetchedKey]: String(item.fetchedAt),
         } as RecordData;
         if (existing)
           record.correctionHistory = snapshotCorrectionHistory(existing);
@@ -521,8 +543,7 @@ export async function saveInstagramObservations(input: InstagramObservation[]) {
             });
           }
           summary.updated++;
-          if (existing?.automaticProvider !== "instagram")
-            summary.manualUpdated++;
+          if (existing?.automaticProvider !== provider) summary.manualUpdated++;
         }
         if (!meta) {
           meta = {
