@@ -6,6 +6,8 @@ import {
   instagramConfigured,
   instagramCookie,
   readInstagramCredential,
+  connectInstagramSystemUser,
+  systemInstagramConfigured,
 } from "@/lib/instagram-connection";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,6 +38,7 @@ export async function GET() {
         connected: !!credential,
         username: credential?.username || "",
         expiresAt: credential?.expiresAt ?? null,
+        connectionMethod: systemInstagramConfigured() ? "system_user" : "oauth",
       },
       { headers: { "Cache-Control": "no-store" } },
     );
@@ -49,6 +52,15 @@ export async function POST(req: NextRequest) {
   if (!sameOrigin(req))
     return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
   try {
+    if (systemInstagramConfigured()) {
+      const connection = await connectInstagramSystemUser();
+      return NextResponse.json(
+        { connected: true, username: connection.username },
+        {
+          headers: { "Cache-Control": "no-store" },
+        },
+      );
+    }
     const flow = await beginInstagram();
     const response = NextResponse.json(
       { url: flow.url },

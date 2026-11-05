@@ -12,6 +12,7 @@ const statusFetcher = async (url: string) => {
     connected: boolean;
     username: string;
     expiresAt: number | null;
+    connectionMethod?: "system_user" | "oauth";
   };
 };
 export function InstagramSettings({
@@ -23,7 +24,7 @@ export function InstagramSettings({
   writable: boolean;
   onSynced: () => Promise<unknown>;
 }) {
-  const { data, error } = useSWR(
+  const { data, error, mutate } = useSWR(
     online ? "/api/instagram" : null,
     statusFetcher,
     { shouldRetryOnError: false },
@@ -44,7 +45,14 @@ export function InstagramSettings({
           body.error || "Instagram action could not be completed.",
         );
       if (action === "connect") {
-        window.location.assign(body.url);
+        if (body.connected) {
+          setMessage(
+            `Connected to @${body.username}. Choose Sync Instagram to read performance statistics.`,
+          );
+          await mutate();
+        } else {
+          window.location.assign(body.url);
+        }
         return;
       }
       setMessage(
@@ -103,6 +111,12 @@ export function InstagramSettings({
           . Reconnect here when needed.
         </p>
       )}
+      {data?.connectionMethod === "system_user" && (
+        <p className="muted small">
+          Uses the server connection for your Instagram account. If Meta expires
+          or revokes access, replace the server token and validate again.
+        </p>
+      )}
       <div className="button-group">
         <button
           className="button outline"
@@ -110,10 +124,14 @@ export function InstagramSettings({
           onClick={() => void act("connect")}
         >
           {busy === "connect"
-            ? "Opening Instagram…"
-            : data?.connected
-              ? "Reconnect Instagram"
-              : "Connect Instagram"}
+            ? data?.connectionMethod === "system_user"
+              ? "Validating Instagram…"
+              : "Opening Instagram…"
+            : data?.connectionMethod === "system_user"
+              ? "Validate Instagram connection"
+              : data?.connected
+                ? "Reconnect Instagram"
+                : "Connect Instagram"}
         </button>
         <button
           className="button"

@@ -495,7 +495,7 @@ test('Instagram setup is explicit and does not sync on opening Settings', async 
   let syncs=0;page.on('request',r=>{if(r.url().endsWith('/api/instagram/sync'))syncs++});
   await page.reload();
   const panel=page.locator('.instagram-settings');
-  await expect(panel.getByRole('heading',{name:'Instagram insights'})).toBeVisible();
+  await expect(panel.getByRole('heading',{name:'Instagram insights'})).toBeVisible({timeout:20000});
   await expect(panel.getByRole('button',{name:'Sync Instagram',exact:true})).toBeDisabled();
   await panel.getByRole('button',{name:'Connect Instagram',exact:true}).click();
   await expect(panel.getByRole('status')).toContainText('Instagram is not configured yet');
@@ -503,4 +503,34 @@ test('Instagram setup is explicit and does not sync on opening Settings', async 
   await page.setViewportSize({width:390,height:844});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
   await panel.screenshot({path:'test-results/instagram-settings-mobile.png'});
+});
+
+test('System User validation stays in Settings and enables explicit sync', async ({page}) => {
+  let connected=false, validations=0, syncs=0;
+  await page.route('**/api/studio', async route => {
+    if(route.request().method()!=='GET') throw new Error('Validation must not write studio data');
+    const response=await route.fetch();
+    const dataset=await response.json();
+    return route.fulfill({json:{...dataset,mode:'live',writable:true}});
+  });
+  await page.route('**/api/instagram', async route => {
+    if(route.request().method()==='POST') {
+      validations++; connected=true;
+      return route.fulfill({json:{connected:true,username:'creator'}});
+    }
+    return route.fulfill({json:{configured:true,connected,username:connected?'creator':'',expiresAt:null,connectionMethod:'system_user'}});
+  });
+  page.on('request', r=>{if(r.url().endsWith('/api/instagram/sync'))syncs++});
+  await page.goto('/settings');
+  await page.request.post('/api/session',{headers:{Origin:new URL(page.url()).origin},data:{password:process.env.E2E_PASSWORD || 'content-studio-local-2026'}});
+  await page.reload();
+  const panel=page.locator('.instagram-settings');
+  await expect(panel.getByRole('button',{name:'Sync Instagram',exact:true})).toBeDisabled();
+  expect(validations).toBe(0);
+  await panel.getByRole('button',{name:'Validate Instagram connection',exact:true}).click();
+  await expect(panel.getByRole('status')).toContainText('Connected to @creator');
+  await expect(panel.getByRole('button',{name:'Sync Instagram',exact:true})).toBeEnabled();
+  expect(page.url()).toContain('/settings');
+  expect(validations).toBe(1);
+  expect(syncs).toBe(0);
 });

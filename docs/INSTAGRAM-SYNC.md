@@ -14,6 +14,14 @@ This integration uses Facebook Login for Business with a configuration that gran
 
 ## Creator workflow
 
+### First-party portfolio System User
+
+When Unified Login approves the account but returns an empty assigned-account list, an explicitly assigned portfolio System User is supported. Assign the project app and Instagram account to that System User, then generate a token for this app with `instagram_basic` and `instagram_manage_insights`. Save it directly in Vercel Production as Sensitive `META_INSTAGRAM_SYSTEM_USER_TOKEN`; configure the non-secret `META_INSTAGRAM_SYSTEM_USER_ID` and `META_INSTAGRAM_ACCOUNT_ID` for this project's exact assets. Deploy after changing environment configuration.
+
+Settings → Validate Instagram connection performs read-only identity, exact account, and media-access checks and encrypts the token into the existing private Blob credential namespace. It does not call the empty assigned-account edge, modify Meta assets, or write Sheets. Insights access is verified by the first explicit sync. Status reads never import a token. A failed validation leaves the previous connection intact; Blob errors fail closed and uncertain writes are not retried. ETags prevent concurrent replacement. The token is never returned to the browser or placed in request URLs. Server tokens are not an automatic fallback for a missing, corrupt, expired or revoked saved credential.
+
+This setup cannot infer the token's actual expiry date and does not label it permanent or grant a fresh 60-day lifetime. If access expires or is revoked, replace the server token, deploy the changed configuration and validate again. This first-party route differs from OAuth reconnect: changing a Vercel environment variable requires a deployment.
+
 Settings → Instagram insights → Connect Instagram. Approve the selected account and choose Continue to app. Then click Sync Instagram explicitly. Reconnecting replaces the encrypted server credential; it does not require copying a token or redeploying. Expiring or revoked access requires reconnecting; this system-user integration does not promise automatic token refresh.
 
 Sync reads the connected account's assigned Instagram assets and published media. It matches saved Instagram post links by shortcode, allowing Reel and post permalink forms for the same shortcode. It does not fetch user-supplied URLs or follow provider-supplied pagination URLs. Up to 100 saved post links and 20 provider media pages are supported; unmatched links are counted rather than guessed.

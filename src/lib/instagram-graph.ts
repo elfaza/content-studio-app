@@ -8,6 +8,8 @@ import {
 import { today, type RecordData } from "./domain";
 
 type GraphResult = {
+  id?: unknown;
+  username?: unknown;
   data?: unknown;
   paging?: { next?: string; cursors?: { after?: string } };
   error?: { code?: number; message?: string };
@@ -18,7 +20,11 @@ export async function instagramGraph(
   params: Record<string, string> = {},
   optionalMetric = false,
 ): Promise<GraphResult> {
-  if (!/^(me\/assigned_instagram_accounts|\d+\/(media|insights))$/.test(path))
+  if (
+    !/^(me|\d+|me\/assigned_instagram_accounts|\d+\/(media|insights))$/.test(
+      path,
+    )
+  )
     throw new InstagramError("Invalid Instagram request.");
   const url = new URL(`https://graph.facebook.com/${graphVersion()}/${path}`);
   url.search = new URLSearchParams(params).toString();

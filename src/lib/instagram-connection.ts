@@ -21,11 +21,81 @@ export class InstagramError extends Error {
   }
 }
 export const instagramConfigured = () =>
+  systemInstagramConfigured() || instagramOAuthConfigured();
+const instagramOAuthConfigured = () =>
   !!(
     process.env.META_APP_ID &&
     process.env.META_APP_SECRET &&
     process.env.META_INSTAGRAM_CONFIG_ID
   );
+export const systemInstagramConfigured = () =>
+  !!process.env.META_INSTAGRAM_SYSTEM_USER_TOKEN;
+
+// Import only through an authenticated explicit connection action. Never use
+// the environment token as a fallback when saved credentials fail.
+export async function connectInstagramSystemUser() {
+  const token = process.env.META_INSTAGRAM_SYSTEM_USER_TOKEN?.trim();
+  const accountId = process.env.META_INSTAGRAM_ACCOUNT_ID || "";
+  const systemUserId = process.env.META_INSTAGRAM_SYSTEM_USER_ID || "";
+  if (
+    !token ||
+    token.length > 16000 ||
+    !/^\d+$/.test(accountId) ||
+    !/^\d+$/.test(systemUserId)
+  )
+    throw new InstagramError(
+      "Instagram System User setup is incomplete on the server.",
+    );
+  const saved = await readInstagramPrivate(instagramPath("credential.v1.json"));
+  const { instagramGraph } = await import("./instagram-graph");
+  const identity = await instagramGraph("me", token, { fields: "id" });
+  if (identity.id !== systemUserId)
+    throw new InstagramError(
+      "The server token belongs to a different System User. Check the Content Studio token in server settings.",
+      428,
+      true,
+    );
+  const profile = await instagramGraph(accountId, token, {
+    fields: "id,username",
+  });
+  if (
+    profile.id !== accountId ||
+    typeof profile.username !== "string" ||
+    !profile.username ||
+    profile.username.length > 200
+  )
+    throw new InstagramError(
+      "The configured Instagram account could not be verified. Check the account's assigned assets.",
+      428,
+      true,
+    );
+  // Read-only access check. Insights coverage is confirmed by the first sync.
+  const media = await instagramGraph(`${accountId}/media`, token, {
+    fields: "id",
+    limit: "1",
+  });
+  if (!Array.isArray(media.data))
+    throw new InstagramError(
+      "Instagram media access could not be verified.",
+      428,
+      true,
+    );
+  const payload = credentialSchema.parse({
+    accessToken: token,
+    accountId,
+    username: profile.username,
+    // The token's issuance/expiry is unknown; never invent a new 60-day lifetime.
+    expiresAt: null,
+    savedAt: Date.now(),
+    revision: randomUUID(),
+  });
+  await writeInstagramPrivate(
+    instagramPath("credential.v1.json"),
+    sealInstagram(payload),
+    saved?.etag ?? null,
+  );
+  return { username: payload.username };
+}
 export function instagramOrigin() {
   try {
     const url = new URL(process.env.APP_ORIGIN || "");
@@ -203,7 +273,7 @@ const invalidState = () =>
     true,
   );
 export async function beginInstagram() {
-  if (!instagramConfigured())
+  if (!instagramOAuthConfigured())
     throw new InstagramError(
       "Instagram is not configured yet. Add the Meta app credentials in server settings.",
     );
@@ -272,7 +342,7 @@ export async function finishInstagram(
   code: string,
   attempt: z.infer<typeof attemptSchema>,
 ) {
-  if (!code || code.length > 4096 || !instagramConfigured())
+  if (!code || code.length > 4096 || !instagramOAuthConfigured())
     throw invalidState();
   await writeInstagramPrivate(
     instagramPath(`claims/${digest(attempt.state)}.json`),

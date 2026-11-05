@@ -26,6 +26,7 @@ import {
   instagramPath,
   readInstagramCredential,
   InstagramError,
+  connectInstagramSystemUser,
 } from "../src/lib/instagram-connection";
 import {
   collectInstagram,
@@ -58,6 +59,9 @@ beforeEach(() => {
     APP_ORIGIN: "https://studio.example.com",
     BLOB_READ_WRITE_TOKEN: "fake-blob",
     VERCEL_BLOB_RETRIES: "0",
+    META_INSTAGRAM_SYSTEM_USER_TOKEN: "",
+    META_INSTAGRAM_SYSTEM_USER_ID: "",
+    META_INSTAGRAM_ACCOUNT_ID: "",
   }))
     vi.stubEnv(k, v);
   vi.stubGlobal("fetch", m.fetch);
@@ -114,6 +118,131 @@ async function connected() {
   await finishInstagram("fake-code", state);
   m.fetch.mockClear();
 }
+function systemUserProvider() {
+  vi.stubEnv("META_INSTAGRAM_SYSTEM_USER_TOKEN", "private-system-token");
+  vi.stubEnv("META_INSTAGRAM_SYSTEM_USER_ID", "55");
+  vi.stubEnv("META_INSTAGRAM_ACCOUNT_ID", "987");
+  m.fetch.mockImplementation(
+    async (url: URL | string, options: RequestInit) => {
+      expect(options.method ?? "GET").toBe("GET");
+      expect(options.headers).toMatchObject({
+        Authorization: "Bearer private-system-token",
+      });
+      expect(String(url)).not.toContain("private-system-token");
+      const path = new URL(url).pathname;
+      if (path.endsWith("/me")) return json({ id: "55" });
+      if (path.endsWith("/987"))
+        return json({ id: "987", username: "creator" });
+      if (path.endsWith("/987/media")) return json({ data: [] });
+      throw Error("unexpected provider request");
+    },
+  );
+}
+it("imports a server System User token only through an authenticated same-origin action and encrypts it", async () => {
+  systemUserProvider();
+  const request = () =>
+    new NextRequest("https://studio.example.com/api/instagram", {
+      method: "POST",
+      headers: {
+        host: "studio.example.com",
+        origin: "https://studio.example.com",
+      },
+    });
+  expect((await start(request())).status).toBe(401);
+  expect(m.fetch).not.toHaveBeenCalled();
+  m.cookies.set("cs-session", token());
+  const response = await start(request());
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({
+    connected: true,
+    username: "creator",
+  });
+  expect(response.headers.get("cache-control")).toBe("no-store");
+  expect(response.cookies.get("cs-instagram-state")).toBeUndefined();
+  expect(await readInstagramCredential()).toMatchObject({
+    accessToken: "private-system-token",
+    accountId: "987",
+    expiresAt: null,
+  });
+  expect(JSON.stringify([...m.blobs.values()])).not.toContain(
+    "private-system-token",
+  );
+  expect(await (await status()).text()).not.toContain("private-system-token");
+});
+it("rejects mismatched System Users, mismatched profiles and denied media access without replacing credentials", async () => {
+  await connected();
+  const previous = await readInstagramCredential();
+  systemUserProvider();
+  m.fetch.mockResolvedValueOnce(json({ id: "wrong" }));
+  await expect(connectInstagramSystemUser()).rejects.toThrow(
+    "different System User",
+  );
+  expect(await readInstagramCredential()).toEqual(previous);
+  systemUserProvider();
+  m.fetch
+    .mockResolvedValueOnce(json({ id: "55" }))
+    .mockResolvedValueOnce(json({ id: "999", username: "other" }));
+  await expect(connectInstagramSystemUser()).rejects.toThrow(
+    "could not be verified",
+  );
+  expect(await readInstagramCredential()).toEqual(previous);
+  systemUserProvider();
+  m.fetch
+    .mockResolvedValueOnce(json({ id: "55" }))
+    .mockResolvedValueOnce(json({ id: "987", username: "creator" }))
+    .mockResolvedValueOnce(
+      json({ error: { code: 200, message: "private-system-token" } }, 400),
+    );
+  await expect(connectInstagramSystemUser()).rejects.toThrow("did not grant");
+  expect(await readInstagramCredential()).toEqual(previous);
+});
+it("does not import on status reads, fail over on corrupt storage, or retry uncertain System User writes", async () => {
+  systemUserProvider();
+  m.cookies.set("cs-session", token());
+  expect(await (await status()).json()).toMatchObject({
+    connected: false,
+    connectionMethod: "system_user",
+  });
+  expect(m.fetch).not.toHaveBeenCalled();
+  m.readFail = true;
+  await expect(connectInstagramSystemUser()).rejects.toThrow("storage");
+  expect(m.fetch).not.toHaveBeenCalled();
+  m.readFail = false;
+  m.writeFail = "after";
+  await expect(connectInstagramSystemUser()).rejects.toThrow("not retried");
+  expect(m.put).toHaveBeenCalledTimes(1);
+  expect((await readInstagramCredential())?.accessToken).toBe(
+    "private-system-token",
+  );
+  m.blobs.set(instagramPath("credential.v1.json"), {
+    text: "corrupt",
+    etag: "bad",
+  });
+  await expect(readInstagramCredential()).rejects.toThrow("verified");
+});
+it("requires numeric server asset configuration before calling Meta", async () => {
+  systemUserProvider();
+  vi.stubEnv("META_INSTAGRAM_ACCOUNT_ID", "https://evil.example.com");
+  await expect(connectInstagramSystemUser()).rejects.toThrow("incomplete");
+  expect(m.fetch).not.toHaveBeenCalled();
+});
+it("allows only one concurrent System User credential replacement", async () => {
+  await connected();
+  systemUserProvider();
+  const results = await Promise.allSettled([
+    connectInstagramSystemUser(),
+    connectInstagramSystemUser(),
+  ]);
+  expect(
+    results.filter((result) => result.status === "fulfilled"),
+  ).toHaveLength(1);
+  expect(results.filter((result) => result.status === "rejected")).toHaveLength(
+    1,
+  );
+  expect((await readInstagramCredential())?.accessToken).toBe(
+    "private-system-token",
+  );
+});
 it("encrypts with random IVs and rejects tampering and wrong purpose/app/origin", () => {
   const a = sealInstagram({ accessToken: "private-token" }),
     b = sealInstagram({ accessToken: "private-token" });
