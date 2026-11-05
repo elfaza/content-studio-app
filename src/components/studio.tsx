@@ -56,6 +56,7 @@ import {
 } from "@/lib/domain";
 import { platformPerformance, averageWatchedPercent } from "@/lib/performance";
 import { PublishedPlatforms, ObservationHistory } from "./published-platforms";
+import { InstagramSettings } from "./instagram-settings";
 import { PerformanceTracker } from "./performance-tracker";
 import { Dialog } from "./ui/dialog";
 import Editor from "./editor";
@@ -2140,6 +2141,11 @@ export default function Studio() {
                       </div>
                     </section>
                     <div>
+                      <InstagramSettings
+                        online={online}
+                        writable={canWrite && dataset.mode === "live"}
+                        onSynced={() => mutate()}
+                      />
                       <section className="panel">
                         <div className="panel-heading">
                           <h2>The creator behind the stories</h2>

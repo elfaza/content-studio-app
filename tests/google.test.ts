@@ -1,6 +1,11 @@
 import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 import { createHash } from "node:crypto";
-import { ideaFields, videoFields, snapshotFields } from "../src/lib/domain";
+import {
+  ideaFields,
+  videoFields,
+  snapshotFields,
+  today,
+} from "../src/lib/domain";
 const mock = vi.hoisted(() => ({
   get: vi.fn(),
   valuesGet: vi.fn(),
@@ -22,7 +27,11 @@ vi.mock("../src/lib/google-oauth", () => ({
   oauthMode: () => true,
   connectedGoogleClient: async () => ({}),
 }));
-import { readDataset, save } from "../src/lib/repository";
+import {
+  readDataset,
+  save,
+  saveInstagramObservations,
+} from "../src/lib/repository";
 type Tab = { id: number; headers: string[]; rows: unknown[][] };
 let tabs: Record<string, Tab>;
 function contentRequests() {
@@ -127,6 +136,160 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 describe("Official Google adapter preservation", () => {
+  async function instagramInput() {
+    const video = (await readDataset()).videos[0];
+    return {
+      videoId: video.id,
+      videoVersion: video.version,
+      igUrl: video.igUrl,
+      date: today(),
+      fetchedAt: Date.now(),
+      metrics: { views: "500", likes: "0", comments: "2" },
+    };
+  }
+  it("syncs Instagram statistics and metadata atomically without changing posts or other platforms", async () => {
+    const before = JSON.stringify(tabs);
+    expect(await saveInstagramObservations([await instagramInput()])).toEqual({
+      added: 1,
+      updated: 0,
+      unchanged: 0,
+      manualKept: 0,
+    });
+    const requests = contentRequests();
+    expect(JSON.stringify(requests)).toContain("automaticProvider");
+    expect(JSON.stringify(requests)).toContain("instagram");
+    expect(JSON.stringify(requests)).toContain("500");
+    expect(
+      requests.filter((r: { updateCells?: { range?: { sheetId: number } } }) =>
+        [1, 2].includes(r.updateCells?.range?.sheetId ?? -1),
+      ),
+    ).toEqual([]);
+    expect(requests.some((r: { deleteSheet?: unknown }) => r.deleteSheet)).toBe(
+      true,
+    );
+    expect(mock.batchUpdate).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(tabs)).toBe(before);
+  });
+  it("keeps a manual observation for today rather than overwriting it", async () => {
+    tabs["Performance Tracker"].rows = [
+      makeRow(snapshotFields, {
+        videoId: "VID-001",
+        title: "Manual",
+        platform: "Instagram",
+        date: today(),
+        views: "100",
+      }),
+    ];
+    expect(
+      (await saveInstagramObservations([await instagramInput()])).manualKept,
+    ).toBe(1);
+    expect(contentRequests()).toEqual([]);
+  });
+  it("updates only its own observation with correction history and rejects stale provider results", async () => {
+    const raw = makeRow(snapshotFields, {
+      videoId: "VID-001",
+      title: "Published story",
+      platform: "Instagram",
+      date: today(),
+      views: "100",
+      source: "Instagram API",
+    });
+    while (raw.at(-1) === "") raw.pop();
+    tabs["Performance Tracker"].rows = [raw];
+    const fingerprint = createHash("sha256")
+        .update(JSON.stringify(raw))
+        .digest("hex"),
+      anchor = createHash("sha256")
+        .update(JSON.stringify(["VID-001", "Instagram", today()]))
+        .digest("hex");
+    tabs["CS_Metadata"] = {
+      id: 4,
+      headers: ["id", "entity", "fingerprint", "anchor", "extras"],
+      rows: [
+        [
+          "auto",
+          "snapshots",
+          fingerprint,
+          anchor,
+          JSON.stringify({
+            automaticProvider: "instagram",
+            instagramFetchedAt: String(Date.now() - 10000),
+          }),
+        ],
+      ],
+    };
+    const input = await instagramInput();
+    expect((await saveInstagramObservations([input])).updated).toBe(1);
+    const requests = JSON.stringify(contentRequests());
+    expect(requests).toContain("correctionHistory");
+    expect(requests).toContain("100");
+    mock.batchUpdate.mockClear();
+    tabs["CS_Metadata"].rows[0][4] = JSON.stringify({
+      automaticProvider: "instagram",
+      instagramFetchedAt: String(input.fetchedAt + 10000),
+    });
+    expect((await saveInstagramObservations([input])).unchanged).toBe(1);
+    expect(contentRequests()).toEqual([]);
+  });
+  it("does not save provider metrics if a linked video changed during sync", async () => {
+    const input = await instagramInput();
+    input.videoVersion = "stale";
+    await expect(saveInstagramObservations([input])).rejects.toThrow(
+      "post changed",
+    );
+    expect(contentRequests()).toEqual([]);
+  });
+  it("never retries an uncertain Instagram snapshot commit", async () => {
+    const input = await instagramInput();
+    mock.batchUpdate
+      .mockResolvedValueOnce({ data: {} })
+      .mockRejectedValue(Object.assign(Error("timeout"), { code: 503 }));
+    await expect(saveInstagramObservations([input])).rejects.toThrow(
+      "uncertain",
+    );
+    expect(mock.batchUpdate).toHaveBeenCalledTimes(2);
+  });
+  it("protects an automatic snapshot formula and makes human corrections override future sync", async () => {
+    const raw = makeRow(snapshotFields, {
+      videoId: "VID-001",
+      title: "Published story",
+      platform: "Instagram",
+      date: today(),
+      views: "=400+77",
+      source: "Instagram API",
+    });
+    while (raw.at(-1) === "") raw.pop();
+    tabs["Performance Tracker"].rows = [raw];
+    const fingerprint = createHash("sha256")
+        .update(JSON.stringify(raw))
+        .digest("hex"),
+      anchor = createHash("sha256")
+        .update(JSON.stringify(["VID-001", "Instagram", today()]))
+        .digest("hex");
+    tabs["CS_Metadata"] = {
+      id: 4,
+      headers: ["id", "entity", "fingerprint", "anchor", "extras"],
+      rows: [
+        [
+          "auto",
+          "snapshots",
+          fingerprint,
+          anchor,
+          JSON.stringify({
+            automaticProvider: "instagram",
+            instagramFetchedAt: "1",
+          }),
+        ],
+      ],
+    };
+    await expect(
+      saveInstagramObservations([await instagramInput()]),
+    ).rejects.toThrow("formula");
+    expect(contentRequests()).toEqual([]);
+    const snapshot = (await readDataset()).snapshots[0];
+    const corrected = await save("snapshots", { ...snapshot, likes: "10" });
+    expect(corrected.automaticProvider).toBe("manual");
+  });
   function registeredSnapshot() {
     const row = makeRow(snapshotFields, {
       videoId: "VID-001",

@@ -64,5 +64,9 @@ export async function DELETE(req: NextRequest) {
   const res = NextResponse.json({ ok: true });
   res.cookies.delete("cs-session");
   res.cookies.set("cs-google-state", "", { path: "/api/google", maxAge: 0 });
+  res.cookies.set("cs-instagram-state", "", {
+    path: "/api/instagram",
+    maxAge: 0,
+  });
   return res;
 }

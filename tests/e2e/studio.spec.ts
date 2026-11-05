@@ -3,6 +3,8 @@ test.setTimeout(60000);
 test("authentication protects private API", async ({ request }) => {
   expect((await request.get("/api/studio")).status()).toBe(401);
   expect((await request.get('/api/google')).status()).toBe(401);
+  expect((await request.get('/api/instagram')).status()).toBe(401);
+  expect((await request.post('/api/instagram/sync')).status()).toBe(401);
 });
 
 test('Google connection shows an actionable setup message when OAuth is unconfigured',async({page})=>{
@@ -483,4 +485,22 @@ test('performance tracker filters by date and saves explicit corrections with st
   await published.getByRole('button',{name:'Edit TikTok observation 2001-01-02',exact:true}).click();
   await expect(page.getByLabel('Views',{exact:true})).toHaveValue('245');
   await page.getByRole('button',{name:'Close dialog',exact:true}).click();expect(writes).toBe(1);
+});
+
+
+test('Instagram setup is explicit and does not sync on opening Settings', async ({page}) => {
+  test.setTimeout(120000);
+  await page.goto('/settings');
+  await expect.poll(async()=> (await page.request.post('/api/session',{headers:{Origin:new URL(page.url()).origin},data:{password:process.env.E2E_PASSWORD || 'content-studio-local-2026'}})).status(),{timeout:70000,intervals:[10000]}).toBe(200);
+  let syncs=0;page.on('request',r=>{if(r.url().endsWith('/api/instagram/sync'))syncs++});
+  await page.reload();
+  const panel=page.locator('.instagram-settings');
+  await expect(panel.getByRole('heading',{name:'Instagram insights'})).toBeVisible();
+  await expect(panel.getByRole('button',{name:'Sync Instagram',exact:true})).toBeDisabled();
+  await panel.getByRole('button',{name:'Connect Instagram',exact:true}).click();
+  await expect(panel.getByRole('status')).toContainText('Instagram is not configured yet');
+  expect(syncs).toBe(0);
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+  await panel.screenshot({path:'test-results/instagram-settings-mobile.png'});
 });

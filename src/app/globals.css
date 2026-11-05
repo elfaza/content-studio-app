@@ -3219,7 +3219,8 @@ select:not([multiple]):not([size]) {
   .tracker-filters .field:nth-child(2) {
     grid-column: 1 / -1;
   }
-  .tracker-row, .tracker-filters {
+  .tracker-row,
+  .tracker-filters {
     padding: 20px;
   }
   .tracker-row-top {
@@ -3231,4 +3232,12 @@ select:not([multiple]):not([size]) {
     flex-wrap: wrap;
     gap: 8px;
   }
+}
+.instagram-settings > .button-group {
+  margin: 18px 22px;
+}
+.instagram-settings .panel-heading h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }

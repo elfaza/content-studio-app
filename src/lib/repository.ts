@@ -1,7 +1,7 @@
 import "server-only";
 import { withSheetWriteLock } from "./sheet-write-lock";
 import { google, sheets_v4 } from "googleapis";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID, randomInt } from "node:crypto";
 import { readFile, writeFile, rename } from "node:fs/promises";
 import {
   Dataset,
@@ -17,6 +17,8 @@ import {
   cancelIdeaSchedules,
   platforms,
 } from "./domain";
+import type { InstagramObservation } from "./instagram-graph";
+import { today } from "./domain";
 import { demoData } from "./demo";
 import { z } from "zod";
 import { oauthMode, connectedGoogleClient } from "./google-oauth";
@@ -122,6 +124,37 @@ const anchor = (entity: Entity, row: Record<string, string>) =>
     : entity === "snapshots"
       ? hash([row.videoId, row.platform, row.date])
       : row.id;
+function snapshotCorrectionHistory(existing: RecordData) {
+  const before = Object.fromEntries(
+    Object.entries(existing).filter(
+      ([key]) => !["correctionHistory", "version"].includes(key),
+    ),
+  );
+  let history: unknown;
+  try {
+    history = JSON.parse(existing.correctionHistory || "[]");
+  } catch {
+    throw new AppError(
+      "Correction history is invalid. Review metadata before editing.",
+      409,
+    );
+  }
+  if (!Array.isArray(history))
+    throw new AppError(
+      "Correction history is invalid. Review metadata before editing.",
+      409,
+    );
+  const historyValue = JSON.stringify([
+    ...history,
+    { at: new Date().toISOString(), before },
+  ]);
+  if (JSON.stringify(historyValue).length > 40000)
+    throw new AppError(
+      "This observation's correction history is full. No changes were saved.",
+      409,
+    );
+  return historyValue;
+}
 async function inspect(): Promise<Inspection> {
   const api = await client(),
     spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
@@ -336,6 +369,231 @@ async function readDemo(): Promise<Dataset> {
 export async function readDataset() {
   return live() ? (await inspect()).dataset : readDemo();
 }
+
+// Provider reads finish before entering this transaction. Only snapshots and
+// their metadata change; post links, durations, ideas, and other platforms do not.
+export async function saveInstagramObservations(input: InstagramObservation[]) {
+  if (!live() || process.env.GOOGLE_SHEETS_WRITES_ENABLED !== "true")
+    throw new AppError(
+      "Connect your writable Google tracker before syncing Instagram.",
+      409,
+    );
+  if (
+    input.length > 100 ||
+    new Set(input.map((r) => r.videoId)).size !== input.length
+  )
+    throw new AppError("Invalid Instagram sync batch.", 409);
+  return serialized(async () => {
+    const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+    if (!spreadsheetId) throw new AppError("Spreadsheet ID is missing", 503);
+    return withSheetWriteLock(await client(), spreadsheetId, async (commit) => {
+      const inspection = await inspect(),
+        { dataset } = inspection;
+      if (!dataset.writable)
+        throw new AppError(
+          "Resolve the spreadsheet warning before syncing Instagram.",
+          409,
+        );
+      const grid = inspection.grids.snapshots!;
+      const requests: sheets_v4.Schema$Request[] = [];
+      let meta = inspection.meta;
+      if (meta && metadataHeaders.some((h, i) => meta!.headers[i] !== h))
+        throw new AppError("Review metadata column order before syncing.", 409);
+      const summary = { added: 0, updated: 0, unchanged: 0, manualKept: 0 };
+      for (const item of input) {
+        const video = dataset.videos.find((v) => v.id === item.videoId);
+        if (
+          !video ||
+          video.version !== item.videoVersion ||
+          video.igUrl !== item.igUrl
+        )
+          throw new AppError(
+            "A linked post changed while Instagram was loading. Refresh and sync again.",
+            409,
+          );
+        if (
+          !Number.isFinite(item.fetchedAt) ||
+          Date.now() - item.fetchedAt > 300000 ||
+          item.fetchedAt > Date.now() + 60000 ||
+          item.date !== today(new Date(item.fetchedAt))
+        )
+          throw new AppError(
+            "Instagram statistics expired before saving. Sync again.",
+            409,
+          );
+        const metrics = Object.fromEntries(
+          ["views", "likes", "comments", "shares", "saves"]
+            .filter((k) => item.metrics[k] !== undefined)
+            .map((k) => [k, item.metrics[k]]),
+        );
+        const matches = dataset.snapshots.filter(
+          (r) =>
+            r.videoId === video.id &&
+            r.platform === "Instagram" &&
+            r.date === item.date,
+        );
+        if (matches.length > 1)
+          throw new AppError(
+            "Duplicate Instagram observations exist for this date. Correct them before syncing.",
+            409,
+          );
+        const existing = matches[0];
+        if (existing && existing.automaticProvider !== "instagram") {
+          summary.manualKept++;
+          continue;
+        }
+        if (
+          existing &&
+          (Number(existing.instagramFetchedAt) >= item.fetchedAt ||
+            Object.entries(metrics).every(([k, v]) => existing[k] === v))
+        ) {
+          summary.unchanged++;
+          continue;
+        }
+        const data = validate("snapshots", {
+          ...existing,
+          ...metrics,
+          videoId: video.id,
+          title: video.title,
+          platform: "Instagram",
+          date: item.date,
+          source: "Instagram API",
+        });
+        const id = existing?.id || "snapshots-" + randomUUID();
+        const record = {
+          ...existing,
+          ...data,
+          id,
+          automaticProvider: "instagram",
+          instagramFetchedAt: String(item.fetchedAt),
+        } as RecordData;
+        if (existing)
+          record.correctionHistory = snapshotCorrectionHistory(existing);
+        const original = inspection.raw.get("snapshots" + id) || [];
+        const next = [...original];
+        const rowIndex = inspection.indices.get("snapshots" + id);
+        const cells = grid.headers.map((h, i) => {
+          const key = (snapshotFields as Record<string, string>)[h];
+          const value =
+            key && (!existing || record[key] !== existing[key])
+              ? (record[key] ?? "")
+              : String(original[i] ?? "");
+          next[i] = value;
+          return { userEnteredValue: { stringValue: value } };
+        });
+        if (rowIndex === undefined) {
+          requests.push({
+            appendCells: {
+              sheetId: grid.sheetId,
+              rows: [{ values: cells }],
+              fields: "userEnteredValue",
+            },
+          });
+          summary.added++;
+        } else {
+          for (let c = 0; c < grid.headers.length; c++) {
+            if (
+              !(snapshotFields as Record<string, string>)[grid.headers[c]] ||
+              String(original[c] ?? "") === next[c]
+            )
+              continue;
+            if (String(original[c] ?? "").startsWith("="))
+              throw new AppError(
+                "A statistic contains a formula. Review it in Google Sheets; sync will not replace it.",
+                409,
+              );
+            requests.push({
+              updateCells: {
+                range: {
+                  sheetId: grid.sheetId,
+                  startRowIndex: rowIndex,
+                  endRowIndex: rowIndex + 1,
+                  startColumnIndex: c,
+                  endColumnIndex: c + 1,
+                },
+                rows: [{ values: [cells[c]] }],
+                fields: "userEnteredValue",
+              },
+            });
+          }
+          summary.updated++;
+        }
+        if (!meta) {
+          meta = {
+            sheetId: randomInt(1, 2147483647),
+            headers: metadataHeaders,
+            rows: [],
+          };
+          requests.unshift(
+            {
+              addSheet: {
+                properties: {
+                  sheetId: meta.sheetId,
+                  title: "CS_Metadata",
+                  gridProperties: { frozenRowCount: 1 },
+                },
+              },
+            },
+            {
+              updateCells: {
+                start: { sheetId: meta.sheetId, rowIndex: 0, columnIndex: 0 },
+                rows: [
+                  {
+                    values: metadataHeaders.map((stringValue) => ({
+                      userEnteredValue: { stringValue },
+                    })),
+                  },
+                ],
+                fields: "userEnteredValue",
+              },
+            },
+          );
+        }
+        const extras = Object.fromEntries(
+          Object.entries(record).filter(
+            ([k]) =>
+              !Object.values(snapshotFields).includes(k as never) &&
+              !["id", "version"].includes(k),
+          ),
+        );
+        const values = [
+          id,
+          "snapshots",
+          rowHash(next),
+          anchor("snapshots", record),
+          JSON.stringify(extras),
+        ].map((stringValue) => ({ userEnteredValue: { stringValue } }));
+        const metaIndex = meta.rows.findIndex(
+          (r) => r[0] === id && r[1] === "snapshots",
+        );
+        if (metaIndex < 0)
+          requests.push({
+            appendCells: {
+              sheetId: meta.sheetId,
+              rows: [{ values }],
+              fields: "userEnteredValue",
+            },
+          });
+        else
+          requests.push({
+            updateCells: {
+              range: {
+                sheetId: meta.sheetId,
+                startRowIndex: metaIndex + 1,
+                endRowIndex: metaIndex + 2,
+                startColumnIndex: 0,
+                endColumnIndex: 5,
+              },
+              rows: [{ values }],
+              fields: "userEnteredValue",
+            },
+          });
+      }
+      if (requests.length) await commit(requests);
+      return summary;
+    });
+  });
+}
 export async function save(
   entity: Entity,
   input: unknown,
@@ -443,34 +701,9 @@ export async function save(
       version: hash(data),
     } as RecordData;
     if (entity === "snapshots" && existing) {
-      const before = Object.fromEntries(
-        Object.entries(existing).filter(
-          ([key]) => !["correctionHistory", "version"].includes(key),
-        ),
-      );
-      let history: unknown;
-      try {
-        history = JSON.parse(existing.correctionHistory || "[]");
-      } catch {
-        throw new AppError(
-          "Correction history is invalid. Review metadata before editing.",
-          409,
-        );
-      }
-      if (!Array.isArray(history))
-        throw new AppError(
-          "Correction history is invalid. Review metadata before editing.",
-          409,
-        );
-      record.correctionHistory = JSON.stringify([
-        ...history,
-        { at: new Date().toISOString(), before },
-      ]);
-      if (JSON.stringify(record.correctionHistory).length > 40000)
-        throw new AppError(
-          "This observation's correction history is full. No changes were saved.",
-          409,
-        );
+      record.correctionHistory = snapshotCorrectionHistory(existing);
+      // An explicit human correction takes precedence over future provider sync.
+      if (existing.automaticProvider) record.automaticProvider = "manual";
     }
     const cancelling =
       entity === "ideas" && stage(record.status) === "Cancelled";
