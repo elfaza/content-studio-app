@@ -123,6 +123,7 @@ const mediaSchema = z.object({
   permalink: z.string(),
   like_count: count.nullish(),
   comments_count: count.nullish(),
+  media_product_type: z.string().nullish(),
 });
 export type InstagramObservation = {
   videoId: string;
@@ -166,7 +167,7 @@ export async function collectInstagram(videos: RecordData[]) {
       `${credential.accountId}/media`,
       credential.accessToken,
       {
-        fields: "id,permalink,like_count,comments_count",
+        fields: "id,permalink,like_count,comments_count,media_product_type",
         limit: "100",
         ...(after ? { after } : {}),
       },
@@ -206,6 +207,9 @@ export async function collectInstagram(videos: RecordData[]) {
       ["views", "views"],
       ["shares", "shares"],
       ["saved", "saves"],
+      ...(media.media_product_type === "REELS"
+        ? [["ig_reels_avg_watch_time", "avgWatch"]]
+        : []),
     ]) {
       const result = await instagramGraph(
         `${media.id}/insights`,
@@ -217,14 +221,19 @@ export async function collectInstagram(videos: RecordData[]) {
         .array(
           z.object({
             name: z.string(),
-            values: z.array(z.object({ value: count })).optional(),
-            total_value: z.object({ value: count }).optional(),
+            values: z.array(z.object({ value: count.nullish() })).optional(),
+            total_value: z.object({ value: count.nullish() }).optional(),
           }),
         )
         .parse(result.data);
       const row = rows.find((r) => r.name === metric);
       const value = row?.total_value?.value ?? row?.values?.at(-1)?.value;
-      if (value !== undefined) metrics[key] = String(value);
+      // Meta's Reels average watch time is milliseconds; the tracker stores
+      // seconds and derives Avg. watched from the platform-specific duration.
+      if (value != null)
+        metrics[key] = String(
+          metric === "ig_reels_avg_watch_time" ? value / 1000 : value,
+        );
     }
     if (!Object.keys(metrics).length) {
       unmatched.push(video.title);

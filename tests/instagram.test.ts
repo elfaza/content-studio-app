@@ -37,6 +37,7 @@ import { GET as status, POST as start } from "../src/app/api/instagram/route";
 import { GET as callback } from "../src/app/api/instagram/callback/route";
 import { token } from "../src/lib/auth";
 import { POST as sync } from "../src/app/api/instagram/sync/route";
+import { averageWatchedPercent } from "../src/lib/performance";
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
     status,
@@ -606,4 +607,102 @@ it("fetches owned posts, follows only provider cursors, preserves measured zeros
       (c) => new URL(c[0]).hostname === "graph.facebook.com",
     ),
   ).toBe(true);
+});
+it.each([
+  [12345, "12.345", "values"],
+  [0, "0", "total"],
+  [45000, "45", "total"],
+  [null, undefined, "values"],
+] as const)(
+  "converts a Reels watch-time reading %s from milliseconds without losing zero or inventing missing values",
+  async (value, expected, shape) => {
+    await connected();
+    m.fetch.mockImplementation(async (url: URL | string) => {
+      const u = new URL(url);
+      if (u.pathname.endsWith("/media")) {
+        expect(u.searchParams.get("fields")).toContain("media_product_type");
+        return json({
+          data: [
+            {
+              id: "88",
+              permalink: "https://instagram.com/reel/AbCd/",
+              media_product_type: "REELS",
+              like_count: 1,
+            },
+          ],
+        });
+      }
+      const metric = u.searchParams.get("metric");
+      if (metric === "ig_reels_avg_watch_time")
+        return json({
+          data: [
+            {
+              name: metric,
+              ...(shape === "values"
+                ? { values: [{ value }] }
+                : { total_value: { value } }),
+            },
+          ],
+        });
+      return json({ data: [] });
+    });
+    const result = await collectInstagram([
+      {
+        id: "v",
+        version: "v1",
+        title: "Story",
+        igUrl: "https://instagram.com/p/AbCd/",
+      },
+    ]);
+    expect(result.observations[0].metrics.avgWatch).toBe(expected);
+    if (expected !== undefined)
+      expect(
+        averageWatchedPercent(
+          { platform: "Instagram", avgWatch: expected, id: "s", version: "v1" },
+          { igDuration: "30" },
+        ),
+      ).toBeCloseTo((Number(expected) / 30) * 100);
+  },
+);
+it("skips unavailable Reels watch time and never requests it for feed media", async () => {
+  await connected();
+  let kind = "REELS",
+    watchCalls = 0;
+  m.fetch.mockImplementation(async (url: URL | string) => {
+    const u = new URL(url);
+    if (u.pathname.endsWith("/media"))
+      return json({
+        data: [
+          {
+            id: "88",
+            permalink: "https://instagram.com/p/AbCd/",
+            media_product_type: kind,
+            like_count: 2,
+          },
+        ],
+      });
+    if (u.searchParams.get("metric") === "ig_reels_avg_watch_time") {
+      watchCalls++;
+      return json(
+        { error: { code: 100, message: "metric is not available" } },
+        400,
+      );
+    }
+    return json({ data: [] });
+  });
+  const video = {
+    id: "v",
+    version: "v1",
+    title: "Story",
+    igUrl: "https://instagram.com/reel/AbCd/",
+  };
+  expect((await collectInstagram([video])).observations[0].metrics).toEqual({
+    likes: "2",
+  });
+  expect(watchCalls).toBe(1);
+  kind = "FEED";
+  expect((await collectInstagram([video])).observations[0].metrics).toEqual({
+    likes: "2",
+  });
+  expect(watchCalls).toBe(1);
 });

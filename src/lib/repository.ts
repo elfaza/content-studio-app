@@ -442,7 +442,7 @@ async function savePlatformObservations(
           );
         const metrics = Object.fromEntries(
           (provider === "instagram"
-            ? ["views", "likes", "comments", "shares", "saves"]
+            ? ["views", "likes", "comments", "shares", "saves", "avgWatch"]
             : ["views", "likes", "comments", "shares"]
           )
             .filter((k) => item.metrics[k] !== undefined)

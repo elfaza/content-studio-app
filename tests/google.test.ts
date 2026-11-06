@@ -137,6 +137,76 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 describe("Official Google adapter preservation", () => {
+  it("refreshes only Instagram average watch time with correction history while preserving completion, duration and TikTok", async () => {
+    tabs["Performance Tracker"].rows = [
+      makeRow(snapshotFields, {
+        videoId: "VID-001",
+        title: "Manual",
+        platform: "Instagram",
+        date: today(),
+        views: "500",
+        likes: "0",
+        comments: "2",
+        avgWatch: "10",
+        watchedFull: "40",
+      }),
+      makeRow(snapshotFields, {
+        videoId: "VID-001",
+        platform: "TikTok",
+        date: today(),
+        avgWatch: "11",
+        views: "300",
+      }),
+    ];
+    const input = await instagramInput();
+    expect(
+      await saveInstagramObservations([
+        { ...input, metrics: { ...input.metrics, avgWatch: "12.345" } },
+      ]),
+    ).toMatchObject({ updated: 1, manualUpdated: 1 });
+    const requests = contentRequests();
+    const allowed = (["avgWatch", "source"] as const).map((k) =>
+      Object.values(snapshotFields).indexOf(k),
+    );
+    const snapshotWrites = requests.filter(
+      (r: { updateCells?: { range?: { sheetId: number } } }) =>
+        r.updateCells?.range?.sheetId === 3,
+    );
+    expect(
+      snapshotWrites.some(
+        (r: {
+          updateCells: {
+            rows: { values: { userEnteredValue: { stringValue: string } }[] }[];
+          };
+        }) =>
+          r.updateCells.rows[0].values[0].userEnteredValue.stringValue ===
+          "12.345",
+      ),
+    ).toBe(true);
+    for (const r of snapshotWrites) {
+      expect(r.updateCells.range.startRowIndex).toBe(1);
+      expect(allowed).toContain(r.updateCells.range.startColumnIndex);
+    }
+    expect(JSON.stringify(requests)).toContain("correctionHistory");
+    expect(JSON.stringify(requests)).toContain("10");
+  });
+  it("does not overwrite an average watch time formula during Instagram sync", async () => {
+    tabs["Performance Tracker"].rows = [
+      makeRow(snapshotFields, {
+        videoId: "VID-001",
+        platform: "Instagram",
+        date: today(),
+        avgWatch: "=6+6",
+      }),
+    ];
+    const input = await instagramInput();
+    await expect(
+      saveInstagramObservations([
+        { ...input, metrics: { ...input.metrics, avgWatch: "9" } },
+      ]),
+    ).rejects.toThrow("formula");
+    expect(contentRequests()).toEqual([]);
+  });
   it("refreshes only today's TikTok metrics with history and preserves Instagram, watch values and unavailable saves", async () => {
     tabs["Published Content"].rows[0] = makeRow(videoFields, {
       id: "VID-001",

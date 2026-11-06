@@ -145,8 +145,9 @@ export function InstagramSettings({
       <p className="muted small">
         Sync refreshes available Instagram metrics on today&apos;s snapshot,
         including manual observations. Previous values are kept in correction
-        history. Duration, watch metrics, older dates, TikTok and YouTube are
-        unchanged.
+        history. Reels average watch time is refreshed when Meta provides it;
+        otherwise your existing value is kept. Duration, completion rate, older
+        dates, TikTok and YouTube are unchanged.
       </p>
       {error && (
         <p className="error" role="alert">
