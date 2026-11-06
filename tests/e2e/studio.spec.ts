@@ -393,7 +393,7 @@ test('platform versions stay in one card and analytics never mix platforms', asy
     dataset.videos=[{id:'platform-story',version:'demo-1',title:'Two versions of one story',category:'Workday',duration:'60',igUrl:'https://instagram.com/reel/version/',tiktokUrl:'https://tiktok.com/@creator/video/123',igDuration:'45',tiktokDuration:'70',igDate:date(-5),tiktokDate:date(-20)}];
     dataset.snapshots=[
       {id:'ig-old',version:'demo-1',videoId:'platform-story',title:'Two versions of one story',platform:'Instagram',date:date(-10),views:'3742',likes:'60',avgWatch:'30'},
-      {id:'ig-new',version:'demo-1',videoId:'platform-story',title:'Two versions of one story',platform:'Instagram',date:date(-5),views:'3779',likes:'70',avgWatch:'30'},
+      {id:'ig-new',version:'demo-1',videoId:'platform-story',title:'Two versions of one story',platform:'Instagram',date:date(-5),views:'3779',likes:'70',avgWatch:''},
       {id:'tt',version:'demo-1',videoId:'platform-story',title:'Two versions of one story',platform:'TikTok',date:date(-20),views:'245',likes:'4',avgWatch:'30'},
     ];
     dataset.mode='demo';dataset.persistence='browser';localStorage.setItem('cs-hosted-demo',JSON.stringify(dataset));
@@ -405,6 +405,8 @@ test('platform versions stay in one card and analytics never mix platforms', asy
   const tt=card.getByRole('region',{name:'TikTok performance',exact:true});
   await expect(ig).toContainText('3,779');await expect(ig).toContainText('45 sec');await expect(ig).toContainText('66.7%');
   await expect(tt).toContainText('245');await expect(tt).toContainText('70 sec');await expect(tt).toContainText('42.9%');
+  await expect(ig).toContainText('Last available ·');
+  await expect(tt).not.toContainText('Last available ·');
   await expect(card).not.toContainText('4,024');
   await card.getByText('Observation history (3)',{exact:true}).click();
   await card.getByLabel('Observation history platform').selectOption('TikTok');
@@ -420,6 +422,7 @@ test('platform versions stay in one card and analytics never mix platforms', asy
   await expect(ig).toContainText('50 sec');await expect(tt).toContainText('75 sec');
   const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('cs-hosted-demo')!));
   expect(saved.videos[0].duration).toBe('60');expect(saved.snapshots).toHaveLength(3);
+  expect(saved.snapshots.find((s:{id:string})=>s.id==='ig-new').avgWatch).toBe('');
   await page.setViewportSize({width:390,height:844});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
   await page.screenshot({path:'test-results/platform-card-mobile.png',fullPage:true});

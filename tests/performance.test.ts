@@ -4,6 +4,7 @@ import {
   averageWatchedPercent,
   platformPerformance,
   publishedDuration,
+  watchObservation,
 } from "../src/lib/performance";
 
 const row = (data: Record<string, string>): RecordData => ({
@@ -14,6 +15,52 @@ const row = (data: Record<string, string>): RecordData => ({
   ...data,
 });
 describe("platform-specific performance", () => {
+  it("uses the most recent known watch value only for the same video and platform without mutating history", () => {
+    const current = row({
+      id: "new",
+      platform: "TikTok",
+      date: "2026-11-06",
+      views: "500",
+      avgWatch: "",
+    });
+    const older = row({
+      id: "old",
+      platform: "TikTok",
+      date: "2026-11-05",
+      views: "100",
+      avgWatch: "12",
+    });
+    const history = [
+      row({ platform: "TikTok", date: "2026-11-07", avgWatch: "25" }),
+      row({ platform: "Instagram", date: "2026-11-06", avgWatch: "20" }),
+      row({
+        videoId: "other",
+        platform: "TikTok",
+        date: "2026-11-06",
+        avgWatch: "22",
+      }),
+      row({ platform: "TikTok", date: "2026-11-04", avgWatch: "10" }),
+      older,
+      current,
+    ];
+    const before = JSON.stringify(history);
+    const source = watchObservation(current, history);
+    expect(source).toBe(older);
+    expect(averageWatchedPercent(source!, row({ tiktokDuration: "30" }))).toBe(
+      40,
+    );
+    expect(current.views).toBe("500");
+    expect(current.avgWatch).toBe("");
+    expect(JSON.stringify(history)).toBe(before);
+    expect(
+      watchObservation({ ...current, avgWatch: "0" }, history)?.avgWatch,
+    ).toBe("0");
+    expect(watchObservation({ ...current, avgWatch: "18" }, history)?.id).toBe(
+      "new",
+    );
+    expect(watchObservation(current, history.slice(0, 3))).toBeUndefined();
+    expect(watchObservation(undefined, history)).toBeUndefined();
+  });
   const snapshots = [
     row({
       id: "ig-old",

@@ -27,6 +27,24 @@ export function averageWatchedPercent(
   );
 }
 
+// Display-only fallback. Never copy an older metric into a new observation.
+export function watchObservation(
+  snapshot: RecordData | undefined,
+  snapshots: RecordData[],
+) {
+  if (!snapshot) return undefined;
+  if (number(snapshot.avgWatch) !== null) return snapshot;
+  return snapshots
+    .filter(
+      (s) =>
+        s.videoId === snapshot.videoId &&
+        s.platform === snapshot.platform &&
+        s.date <= snapshot.date &&
+        number(s.avgWatch) !== null,
+    )
+    .sort((a, b) => b.date.localeCompare(a.date))[0];
+}
+
 export function platformPerformance(
   snapshots: RecordData[],
   platform: Platform,

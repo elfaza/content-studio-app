@@ -8,7 +8,11 @@ import {
   platforms,
   type RecordData,
 } from "@/lib/domain";
-import { averageWatchedPercent, publishedDuration } from "@/lib/performance";
+import {
+  averageWatchedPercent,
+  publishedDuration,
+  watchObservation,
+} from "@/lib/performance";
 
 const format = (value: number | null) =>
   value === null
@@ -44,17 +48,17 @@ export function PublishedPlatforms({
           const snapshot = observations.find((s) => s.platform === p);
           const link = video[platformPrefix(p) + "Url"];
           const duration = publishedDuration(video, p);
+          const watch = watchObservation(snapshot, snapshots);
+          const watchPercent = watch
+            ? averageWatchedPercent(watch, video)
+            : null;
           const metrics: [string, string][] = [
             ["Duration", duration === null ? "—" : format(duration) + " sec"],
             ["Views", format(number(snapshot?.views))],
             ["Likes", format(number(snapshot?.likes))],
             [
               "Avg. watched",
-              snapshot
-                ? averageWatchedPercent(snapshot, video) === null
-                  ? "—"
-                  : format(averageWatchedPercent(snapshot, video)) + "%"
-                : "—",
+              watchPercent === null ? "—" : format(watchPercent) + "%",
             ],
           ];
           return (
@@ -83,7 +87,20 @@ export function PublishedPlatforms({
                 {metrics.map(([label, value]) => (
                   <div key={label}>
                     <dt>{label}</dt>
-                    <dd>{value}</dd>
+                    <dd>
+                      {value}
+                      {label === "Avg. watched" &&
+                        watchPercent !== null &&
+                        watch &&
+                        watch !== snapshot && (
+                          <div
+                            className="small muted"
+                            title={"Previous observation: " + watch.date}
+                          >
+                            Last available · {dateLabel(watch.date)}
+                          </div>
+                        )}
+                    </dd>
                   </div>
                 ))}
               </dl>
