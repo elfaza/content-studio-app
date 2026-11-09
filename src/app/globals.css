@@ -3253,3 +3253,14 @@ select:not([multiple]):not([size]) {
 .legal-document h2 { margin: 32px 0 12px; }
 .legal-document p { margin-bottom: 16px; }
 .legal-document nav { margin-top: 36px; }
+
+/* One compact sync action per published story. */
+.published-card .card-meta { align-items: center; gap: 12px; }
+.published-card .category-label { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.published-meta-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.published-meta-actions > span { white-space: nowrap; }
+.published-sync-button { width: 44px; height: 44px; min-width: 44px; padding: 0; flex: 0 0 44px; cursor: pointer; }
+.published-sync-button:disabled { opacity: .45; cursor: default; }
+.published-sync-status:empty { display: none; }
+.published-sync-status { margin-top: 10px; overflow-wrap: anywhere; }
+.published-sync-status p { margin: 5px 0; }

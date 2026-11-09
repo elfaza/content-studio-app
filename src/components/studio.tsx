@@ -1640,28 +1640,9 @@ export default function Studio() {
                               <span>PUBLISHED STORY</span>
                             </div>
                             <div className="published-body">
-                              <div className="card-meta">
-                                <span className="category-label">
-                                  {v.category || "Uncategorized"}
-                                </span>
-                                <span className="small muted">
-                                  {v.id.slice(0, 16)}
-                                </span>
-                              </div>
-                              <button
-                                className="plain-title"
-                                onClick={() =>
-                                  setEditing({
-                                    entity: "videos",
-                                    record: v,
-                                    title: "Published story",
-                                  })
-                                }
-                              >
-                                <h3>{v.title}</h3>
-                              </button>
                               <PublishedPlatforms
                                 video={v}
+                                onOpen={() => setEditing({entity: "videos", record: v, title: "Published story"})}
                                 snapshots={dataset.snapshots}
                                 filter={platform}
                                 writable={canWrite && dataset.mode === "live"}

@@ -14,7 +14,7 @@ This integration uses Facebook Login for Business with a configuration that gran
 
 ## Creator workflow
 
-Published content also has a Refresh Instagram button inside each linked platform section. It sends `{ "videoId": "..." }` to the same authenticated sync endpoint and updates only that video's Instagram observation for today. An empty request from Settings retains sync-all behavior. Duplicate-link checks, credential checks, snapshot/version fences, formula protection, correction history and no-retry behavior are shared by both flows.
+Published cards have one icon-only sync action beside the video ID. It syncs linked Instagram and TikTok posts sequentially, then refreshes the list once, independently of the visible platform filter. Each request sends `{ "videoId": "..." }` to its existing authenticated endpoint. Results and reconnect guidance remain separate per platform. An uncertain write stops the remaining work and requires reload/review; it is never retried automatically. Empty requests from Settings retain sync-all behavior. Existing duplicate-link checks, credentials, snapshot/version fences, formula protection and correction history are unchanged.
 
 ### First-party portfolio System User
 
