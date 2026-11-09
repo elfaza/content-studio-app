@@ -54,7 +54,11 @@ import {
   cancelIdeaSchedules,
   today,
 } from "@/lib/domain";
-import { platformPerformance, averageWatchedPercent } from "@/lib/performance";
+import {
+  platformPerformance,
+  averageWatchedPercent,
+  publishedDate,
+} from "@/lib/performance";
 import { PublishedPlatforms, ObservationHistory } from "./published-platforms";
 import { InstagramSettings } from "./instagram-settings";
 import { TikTokSettings } from "./tiktok-settings";
@@ -355,7 +359,11 @@ export default function Studio() {
           ? difficultyRank(a.difficulty) - difficultyRank(b.difficulty)
           : (b.date ?? "").localeCompare(a.date ?? ""),
     );
-  const filteredVideos = (dataset?.videos ?? []).filter(matches);
+  const filteredVideos = (dataset?.videos ?? [])
+    .filter(matches)
+    .sort((a, b) =>
+      publishedDate(b, platform).localeCompare(publishedDate(a, platform)),
+    );
   const start = days === "custom" ? from : dayAdd(today(), -Number(days) + 1),
     end = days === "custom" ? to : today();
   const { observed, points } = useMemo(

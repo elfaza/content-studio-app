@@ -4,6 +4,7 @@ import {
   averageWatchedPercent,
   platformPerformance,
   publishedDuration,
+  publishedDate,
   watchObservation,
 } from "../src/lib/performance";
 
@@ -15,6 +16,39 @@ const row = (data: Record<string, string>): RecordData => ({
   ...data,
 });
 describe("platform-specific performance", () => {
+  it("sorts by actual publish date for the selected platform, leaving undated items last", () => {
+    const videos = [
+      row({ id: "undated" }),
+      row({ id: "cross-post", igDate: "2026-10-20", tiktokDate: "2026-11-09" }),
+      row({ id: "new-ig", igDate: "2026-11-08" }),
+      row({ id: "youtube", youtubeDate: "2026-11-07" }),
+    ];
+    const ordered = (platform: string) =>
+      [...videos]
+        .sort((a, b) =>
+          publishedDate(b, platform).localeCompare(publishedDate(a, platform)),
+        )
+        .map((v) => v.id);
+    expect(ordered("All platforms")).toEqual([
+      "cross-post",
+      "new-ig",
+      "youtube",
+      "undated",
+    ]);
+    expect(ordered("Instagram")).toEqual([
+      "new-ig",
+      "cross-post",
+      "undated",
+      "youtube",
+    ]);
+    expect(publishedDate(videos[0], "All platforms")).toBe("");
+    expect(videos.map((v) => v.id)).toEqual([
+      "undated",
+      "cross-post",
+      "new-ig",
+      "youtube",
+    ]);
+  });
   it("uses the most recent known watch value only for the same video and platform without mutating history", () => {
     const current = row({
       id: "new",
