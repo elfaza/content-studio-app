@@ -1,6 +1,7 @@
 "use client";
-import { useState } from "react";
-import { ExternalLink } from "lucide-react";
+import { useRef, useState } from "react";
+import { ExternalLink, RefreshCw } from "lucide-react";
+import Link from "next/link";
 import {
   latest,
   number,
@@ -29,11 +30,69 @@ export function PublishedPlatforms({
   video,
   snapshots,
   filter,
+  writable = false,
+  onSynced,
 }: {
   video: RecordData;
   snapshots: RecordData[];
   filter: string;
+  writable?: boolean;
+  onSynced?: () => Promise<unknown>;
 }) {
+  const running = useRef(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [messages, setMessages] = useState<
+    Record<string, { text: string; reconnect?: boolean }>
+  >({});
+  async function sync(platform: string) {
+    if (running.current || !writable) return;
+    running.current = true;
+    setBusy(platform);
+    setMessages((previous) => ({ ...previous, [platform]: { text: "" } }));
+    try {
+      const provider = platform === "Instagram" ? "instagram" : "tiktok";
+      const response = await fetch(`/api/${provider}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId: video.id }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        setMessages((previous) => ({
+          ...previous,
+          [platform]: {
+            text:
+              body.error ||
+              "Sync could not be confirmed. Reload to check before trying again.",
+            reconnect: body.reconnect || body.googleReconnect,
+          },
+        }));
+        return;
+      }
+      let text = body.unmatched?.length
+        ? "No available statistics for this post. Check its link and account access."
+        : body.unchanged
+          ? "Already up to date."
+          : "Synced today's statistics. Previous values stay in correction history.";
+      try {
+        await onSynced?.();
+      } catch {
+        text +=
+          " Sync completed, but the list could not refresh. Reload the app to review it.";
+      }
+      setMessages((previous) => ({ ...previous, [platform]: { text } }));
+    } catch {
+      setMessages((previous) => ({
+        ...previous,
+        [platform]: {
+          text: "Sync could not be confirmed. Reload to check before trying again. This request was not retried.",
+        },
+      }));
+    } finally {
+      running.current = false;
+      setBusy(null);
+    }
+  }
   const observations = latest(snapshots.filter((s) => s.videoId === video.id));
   return (
     <div className="published-platforms" aria-label="Performance by platform">
@@ -104,6 +163,30 @@ export function PublishedPlatforms({
                   </div>
                 ))}
               </dl>
+              {link && (p === "Instagram" || p === "TikTok") && (
+                <button
+                  className="button outline"
+                  disabled={!writable || !!busy}
+                  aria-label={`Refresh ${p} statistics for ${video.title}`}
+                  title={
+                    writable
+                      ? `Sync only this ${p} post`
+                      : "Connect a writable tracker and go online to sync"
+                  }
+                  onClick={() => void sync(p)}
+                >
+                  <RefreshCw size={15} className={busy === p ? "spin" : ""} />
+                  {busy === p ? "Syncing…" : `Refresh ${p}`}
+                </button>
+              )}
+              {messages[p]?.text && (
+                <p className="small form-note" role="status">
+                  {messages[p].text}{" "}
+                  {messages[p].reconnect && (
+                    <Link href="/settings">Reconnect in Settings</Link>
+                  )}
+                </p>
+              )}
             </section>
           );
         })}

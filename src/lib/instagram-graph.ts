@@ -134,7 +134,7 @@ export type InstagramObservation = {
   snapshotVersion?: string | null;
   metrics: Record<string, string>;
 };
-export async function collectInstagram(videos: RecordData[]) {
+export async function collectInstagram(videos: RecordData[], videoId?: string) {
   const credential = await readInstagramCredential();
   if (!credential)
     throw new InstagramError("Connect Instagram in Settings first.", 428, true);
@@ -149,7 +149,7 @@ export async function collectInstagram(videos: RecordData[]) {
   for (const video of tracked) {
     const code = instagramShortcode(video.igUrl);
     if (!code) {
-      unmatched.push(video.title);
+      if (!videoId || video.id === videoId) unmatched.push(video.title);
       continue;
     }
     if (requested.has(code))
@@ -159,6 +159,11 @@ export async function collectInstagram(videos: RecordData[]) {
       );
     requested.set(code, video);
   }
+  // Keep duplicate-link checks across the tracker, but fetch metrics only for the target.
+  if (videoId)
+    for (const [code, video] of requested) {
+      if (video.id !== videoId) requested.delete(code);
+    }
   const found = new Map<string, z.infer<typeof mediaSchema>>();
   let after = "";
   const seen = new Set<string>();

@@ -664,6 +664,34 @@ it.each([
       ).toBeCloseTo((Number(expected) / 30) * 100);
   },
 );
+it("fetches metrics only for the selected Instagram post and still checks duplicate links", async () => {
+  await connected();
+  const videos = ["First", "Second"].map((code, i) => ({
+    id: `v${i}`,
+    version: "1",
+    title: code,
+    igUrl: `https://instagram.com/p/${code}/`,
+  }));
+  m.fetch.mockImplementation(async (url: string) => {
+    const u = new URL(url);
+    if (u.pathname.endsWith("/media"))
+      return json({
+        data: [
+          { id: "11", permalink: videos[0].igUrl },
+          { id: "22", permalink: videos[1].igUrl },
+        ],
+      });
+    expect(u.pathname).toContain("/22/insights");
+    const metric = u.searchParams.get("metric");
+    return json({ data: [{ name: metric, values: [{ value: 50 }] }] });
+  });
+  const result = await collectInstagram(videos, "v1");
+  expect(result.observations.map((s) => s.videoId)).toEqual(["v1"]);
+  expect(result.unmatched).toEqual([]);
+  await expect(
+    collectInstagram([videos[0], { ...videos[0], id: "duplicate" }], "v0"),
+  ).rejects.toThrow("same Instagram");
+});
 it("skips unavailable Reels watch time and never requests it for feed media", async () => {
   await connected();
   let kind = "REELS",

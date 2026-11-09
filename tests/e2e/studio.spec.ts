@@ -577,6 +577,53 @@ test('TikTok sync is explicit, separate from Instagram and refreshes the workspa
   await panel.screenshot({path:'test-results/tiktok-settings-mobile.png'});
 });
 
+test('published card refresh targets one platform and video with loading and reconnect feedback', async ({page}) => {
+  test.setTimeout(120000);
+  let refreshed=false;
+  const calls: {provider:string,videoId:string}[]=[];
+  await page.route('**/api/studio', async route => {
+    expect(route.request().method()).toBe('GET');
+    const response=await route.fetch(), dataset=await response.json();
+    await route.fulfill({json:{...dataset, mode:'live',writable:true,
+      videos:[{id:'one-post',version:'v1',title:'Refresh this story',igUrl:'https://instagram.com/p/AbCd/',tiktokUrl:'https://www.tiktok.com/@me/video/123456789012',igDuration:'30',tiktokDuration:'30'},
+        {id:'other-post',version:'v2',title:'Leave this story alone',igUrl:'https://instagram.com/p/Other/'}],
+      snapshots:[{id:'ig',videoId:'one-post',version:'s1',platform:'Instagram',date:'2026-11-09',views:refreshed?'555':'100'}]}});
+  });
+  let release:()=>void=()=>{};
+  const gate=new Promise<void>(resolve=>{release=resolve});
+  await page.route('**/api/instagram/sync', async route=>{
+    calls.push({provider:'instagram',...route.request().postDataJSON()});
+    await gate;
+    refreshed=true;
+    await route.fulfill({json:{added:0,updated:1,unchanged:0,unmatched:[]}});
+  });
+  await page.route('**/api/tiktok/sync', async route=>{
+    calls.push({provider:'tiktok',...route.request().postDataJSON()});
+    await route.fulfill({status:428,json:{error:'Reconnect TikTok in Settings.',reconnect:true}});
+  });
+  await page.goto('/published');
+  await expect.poll(async()=> (await page.request.post('/api/session',{headers:{Origin:new URL(page.url()).origin},data:{password:process.env.E2E_PASSWORD || 'content-studio-local-2026'}})).status(),{timeout:70000,intervals:[10000]}).toBe(200);
+  await page.reload();
+  const card=page.locator('.published-card').filter({has:page.getByRole('heading',{name:'Refresh this story',exact:true})});
+  const ig=card.getByRole('button',{name:'Refresh Instagram statistics for Refresh this story',exact:true});
+  const tt=card.getByRole('button',{name:'Refresh TikTok statistics for Refresh this story',exact:true});
+  await expect(ig).toBeEnabled({timeout:20000});
+  expect(calls).toHaveLength(0);
+  await ig.click();
+  await expect(ig).toBeDisabled();await expect(ig).toHaveText('Syncing…');await expect(tt).toBeDisabled();
+  release();
+  await expect(card.getByRole('status')).toContainText("Synced today's statistics");
+  await expect(ig).toBeEnabled();
+  await expect(card.getByRole('region',{name:'Instagram performance'})).toContainText('555');
+  expect(calls).toEqual([{provider:'instagram',videoId:'one-post'}]);
+  await tt.click();
+  await expect(card.getByRole('link',{name:'Reconnect in Settings'})).toHaveAttribute('href','/settings');
+  expect(calls).toEqual([{provider:'instagram',videoId:'one-post'},{provider:'tiktok',videoId:'one-post'}]);
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+  await card.screenshot({path:'test-results/published-refresh-mobile.png'});
+});
+
 test('public policy pages are readable without exposing the workspace', async ({page, request}) => {
   await page.goto('/privacy');
   await expect(page.getByRole('heading',{name:'Privacy policy',exact:true})).toBeVisible();

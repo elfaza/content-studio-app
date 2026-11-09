@@ -10,6 +10,7 @@ import {
 } from "@/lib/repository";
 import { SheetWriteError } from "@/lib/sheet-write-lock";
 import { GoogleOAuthError } from "@/lib/google-errors";
+import { syncTarget, SyncTargetError } from "@/lib/sync-target";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -30,7 +31,8 @@ export async function POST(req: NextRequest) {
         "Resolve the Google tracker warning before syncing TikTok.",
         409,
       );
-    const result = await collectTikTok(dataset.videos);
+    const videoId = syncTarget(await req.text(), dataset.videos, "tiktokUrl");
+    const result = await collectTikTok(dataset.videos, videoId);
     const after = await readTikTokCredential();
     if (!after || after.credential.revision !== result.revision)
       throw new TikTokError(
@@ -58,6 +60,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const known =
       error instanceof TikTokError ||
+      error instanceof SyncTargetError ||
       error instanceof AppError ||
       error instanceof SheetWriteError ||
       error instanceof GoogleOAuthError;

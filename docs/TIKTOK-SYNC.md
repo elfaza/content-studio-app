@@ -1,5 +1,7 @@
 # TikTok manual performance sync
 
+Published content includes a Refresh TikTok button for each linked video. It sends `{ "videoId": "..." }` to the existing authenticated sync endpoint; only that video's TikTok statistics are queried and saved. Empty requests from Settings still sync the entire list. Duplicate-link checks remain tracker-wide. Both flows retain credential/version checks, write locks, correction history and no automatic write retries.
+
 Configure a TikTok developer app with Login Kit and Display API, granting `user.info.basic` and `video.list`. Production access depends on TikTok approval; Sandbox access is limited to configured target users. Save `TIKTOK_CLIENT_KEY` and Sensitive `TIKTOK_CLIENT_SECRET` directly in this project's Vercel environment. Register exactly `https://content-studio-xi-peach.vercel.app/api/tiktok/callback` as the Login Kit Web redirect URI. Deploy once after configuring credentials.
 
 Settings → Connect TikTok → approve your account → Continue to app → Sync TikTok. Token exchange and refresh occur only on the server. No token copying, scheduling, browser token storage or publishing permission is needed. The confidential Web flow uses client-secret authentication and random browser-bound OAuth state, as documented by TikTok's Web Login Kit; mobile/desktop PKCE parameters are not assumed to apply to this Web client.

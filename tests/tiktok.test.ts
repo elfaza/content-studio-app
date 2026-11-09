@@ -390,6 +390,32 @@ it("matches only full TikTok video links and fetches owned metrics while keeping
   expect(result.observations[0].metrics).toEqual({ views: "500", likes: "0" });
   expect(result.unmatched).toEqual([]);
 });
+it("queries only the selected TikTok video while retaining cross-tracker duplicate guards", async () => {
+  await connected();
+  const videos = ["1234567890123456789", "2234567890123456789"].map(
+    (id, i) => ({
+      id: `v${i}`,
+      version: "1",
+      title: `Story ${i}`,
+      tiktokUrl: `https://www.tiktok.com/@creator/video/${id}`,
+    }),
+  );
+  m.fetch.mockImplementation(async (_url: string, options: RequestInit) => {
+    expect(JSON.parse(String(options.body)).filters.video_ids).toEqual([
+      "2234567890123456789",
+    ]);
+    return json({
+      data: { videos: [{ id: "2234567890123456789", view_count: 55 }] },
+      error: { code: "ok" },
+    });
+  });
+  const result = await collectTikTok(videos, "v1");
+  expect(result.observations.map((s) => s.videoId)).toEqual(["v1"]);
+  expect(result.unmatched).toEqual([]);
+  await expect(
+    collectTikTok([videos[0], { ...videos[0], id: "duplicate" }], "v0"),
+  ).rejects.toThrow("same TikTok");
+});
 it("rejects duplicate links, foreign videos and sanitized provider errors", async () => {
   await connected();
   const video = {

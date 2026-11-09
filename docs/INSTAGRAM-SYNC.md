@@ -14,6 +14,8 @@ This integration uses Facebook Login for Business with a configuration that gran
 
 ## Creator workflow
 
+Published content also has a Refresh Instagram button inside each linked platform section. It sends `{ "videoId": "..." }` to the same authenticated sync endpoint and updates only that video's Instagram observation for today. An empty request from Settings retains sync-all behavior. Duplicate-link checks, credential checks, snapshot/version fences, formula protection, correction history and no-retry behavior are shared by both flows.
+
 ### First-party portfolio System User
 
 When Unified Login approves the account but returns an empty assigned-account list, an explicitly assigned portfolio System User is supported. Assign the project app and Instagram account to that System User, then generate a token for this app with `instagram_basic` and `instagram_manage_insights`. Save it directly in Vercel Production as Sensitive `META_INSTAGRAM_SYSTEM_USER_TOKEN`; configure the non-secret `META_INSTAGRAM_SYSTEM_USER_ID` and `META_INSTAGRAM_ACCOUNT_ID` for this project's exact assets. Deploy after changing environment configuration.

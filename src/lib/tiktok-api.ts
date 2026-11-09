@@ -154,7 +154,7 @@ const videoSchema = z.object({
   comment_count: count.nullish(),
   share_count: count.nullish(),
 });
-export async function collectTikTok(videos: RecordData[]) {
+export async function collectTikTok(videos: RecordData[], videoId?: string) {
   const credential = await activeTikTokCredential();
   const tracked = videos.filter((v) => !!v.tiktokUrl);
   if (tracked.length > 100)
@@ -178,7 +178,7 @@ export async function collectTikTok(videos: RecordData[]) {
   for (const [index, video] of tracked.entries()) {
     const id = resolved[index];
     if (!id) {
-      unmatched.push(video.title);
+      if (!videoId || video.id === videoId) unmatched.push(video.title);
       continue;
     }
     if (requested.has(id))
@@ -188,6 +188,11 @@ export async function collectTikTok(videos: RecordData[]) {
       );
     requested.set(id, video);
   }
+  // Preserve duplicate detection without querying metrics for unrelated videos.
+  if (videoId)
+    for (const [id, video] of requested) {
+      if (video.id !== videoId) requested.delete(id);
+    }
   const ids = [...requested.keys()],
     found = new Map<string, z.infer<typeof videoSchema>>();
   for (let offset = 0; offset < ids.length; offset += 20) {

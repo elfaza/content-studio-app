@@ -13,6 +13,7 @@ import {
 } from "@/lib/repository";
 import { SheetWriteError } from "@/lib/sheet-write-lock";
 import { GoogleOAuthError } from "@/lib/google-errors";
+import { syncTarget, SyncTargetError } from "@/lib/sync-target";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -33,8 +34,9 @@ export async function POST(req: NextRequest) {
         "Resolve the Google tracker warning before syncing Instagram.",
         409,
       );
+    const videoId = syncTarget(await req.text(), dataset.videos, "igUrl");
     const before = await readInstagramCredential();
-    const result = await collectInstagram(dataset.videos);
+    const result = await collectInstagram(dataset.videos, videoId);
     const after = await readInstagramCredential();
     if (!before || !after || before.revision !== after.revision)
       throw new InstagramError(
@@ -62,6 +64,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const known =
       error instanceof InstagramError ||
+      error instanceof SyncTargetError ||
       error instanceof AppError ||
       error instanceof SheetWriteError ||
       error instanceof GoogleOAuthError;

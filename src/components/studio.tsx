@@ -1664,6 +1664,8 @@ export default function Studio() {
                                 video={v}
                                 snapshots={dataset.snapshots}
                                 filter={platform}
+                                writable={canWrite && dataset.mode === "live"}
+                                onSynced={() => mutate()}
                               />
                               <p className="muted small">
                                 Related idea:{" "}
